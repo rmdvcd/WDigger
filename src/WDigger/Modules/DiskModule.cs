@@ -4,7 +4,7 @@ using WDigger.Core;
 namespace WDigger.Modules;
 
 /// <summary>
-/// Phase 5 module (skeleton): disk space analysis, CHKDSK and temp file
+/// Phase 5 module: disk space analysis, CHKDSK scan and temporary file
 /// cleanup.
 /// </summary>
 public class DiskModule : IModule
@@ -50,7 +50,27 @@ public class DiskModule : IModule
     {
         AnsiConsole.MarkupLine("[red]Warning:[/] this deletes files in %TEMP%. Files in use by running applications will be skipped.");
         if (!Confirm(host)) return;
-        host.Commands.Run("cmd", "/c del /s /f /q %TEMP%\\* 2>nul");
+
+        AnsiConsole.Progress().Start(ctx =>
+        {
+            var task = ctx.AddTask("Cleaning temporary files...", autoStart: true);
+            task.MaxValue = 100;
+
+            host.Commands.Run("cmd", "/c del /s /f /q %TEMP%\\* 2>nul", echoOutput: false,
+                onOutputLine: line =>
+                {
+                    task.Description = CommandExecutor.Shorten(line, 64);
+                    task.Increment(1);
+                    if (task.Value >= task.MaxValue)
+                    {
+                        task.Value = 0;
+                    }
+                });
+
+            task.Description = "Temporary file cleanup complete";
+            task.Value = task.MaxValue;
+        });
+
         AnsiConsole.MarkupLine("[green]Temporary file cleanup finished.[/]");
     }
 
@@ -59,9 +79,30 @@ public class DiskModule : IModule
         var drive = AnsiConsole.Ask<string>("Drive letter to scan", "C");
         if (string.IsNullOrWhiteSpace(drive)) return;
         drive = drive.TrimEnd(':');
+
         AnsiConsole.MarkupLine("[yellow]CHKDSK on the system volume may schedule itself for the next reboot.[/]");
         if (!Confirm(host)) return;
-        host.Commands.Run("chkdsk", $"/scan /perf {drive}:");
+
+        AnsiConsole.Progress().Start(ctx =>
+        {
+            var task = ctx.AddTask($"Scanning drive {drive}:...", autoStart: true);
+            task.MaxValue = 100;
+
+            host.Commands.Run("chkdsk", $"/scan /perf {drive}:",
+                echoOutput: false,
+                onOutputLine: line =>
+                {
+                    task.Description = CommandExecutor.Shorten(line, 64);
+                    task.Increment(1);
+                    if (task.Value >= task.MaxValue)
+                    {
+                        task.Value = 0;
+                    }
+                });
+
+            task.Description = $"Drive {drive}: scan complete";
+            task.Value = task.MaxValue;
+        });
     }
 
     private static bool Confirm(AppHost host)

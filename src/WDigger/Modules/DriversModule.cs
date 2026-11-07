@@ -1,11 +1,12 @@
+using System.Linq;
 using Spectre.Console;
 using WDigger.Core;
 
 namespace WDigger.Modules;
 
 /// <summary>
-/// Phase 5 module (skeleton): driver backup with Export-WindowsDriver and
-/// driver enumeration/installation with pnputil.
+/// Phase 5 module: driver backup with Export-WindowsDriver and driver
+/// enumeration/installation with pnputil, with live progress.
 /// </summary>
 public class DriversModule : IModule
 {
@@ -53,7 +54,30 @@ public class DriversModule : IModule
 
         var path = System.IO.Path.GetFullPath(destination);
         AnsiConsole.MarkupLine($"[grey]Exporting drivers to {path} ...[/]");
-        host.Commands.Run("powershell", $"-Command \"Export-WindowsDriver -Online -Destination '{path}' -Verbose\"");
+
+        AnsiConsole.Progress().Start(ctx =>
+        {
+            var task = ctx.AddTask("Exporting drivers...", autoStart: true);
+            task.MaxValue = 100;
+
+            host.Commands.Run("powershell",
+                $"-Command \"Export-WindowsDriver -Online -Destination '{path}' -Verbose\"",
+                echoOutput: false,
+                onOutputLine: line =>
+                {
+                    task.Description = CommandExecutor.Shorten(line, 64);
+                    task.Increment(1);
+                    if (task.Value >= task.MaxValue)
+                    {
+                        task.Value = 0;
+                    }
+                });
+
+            task.Description = "Driver backup complete";
+            task.Value = task.MaxValue;
+        });
+
+        AnsiConsole.MarkupLine($"[green]Driver backup finished at {path} (simulated if dry-run mode is on).[/]");
     }
 
     private static void AddDriver(AppHost host)
@@ -61,7 +85,27 @@ public class DriversModule : IModule
         var inf = AnsiConsole.Ask<string>("Path to the driver .inf file");
         if (string.IsNullOrWhiteSpace(inf)) return;
         if (!Confirm(host)) return;
-        host.Commands.Run("pnputil", $"/add-driver \"{inf}\" /install");
+
+        AnsiConsole.Progress().Start(ctx =>
+        {
+            var task = ctx.AddTask($"Installing driver {inf}...", autoStart: true);
+            task.MaxValue = 100;
+
+            host.Commands.Run("pnputil", $"/add-driver \"{inf}\" /install",
+                echoOutput: false,
+                onOutputLine: line =>
+                {
+                    task.Description = CommandExecutor.Shorten(line, 64);
+                    task.Increment(1);
+                    if (task.Value >= task.MaxValue)
+                    {
+                        task.Value = 0;
+                    }
+                });
+
+            task.Description = "Driver installation complete";
+            task.Value = task.MaxValue;
+        });
     }
 
     private static bool Confirm(AppHost host)
