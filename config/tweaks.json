@@ -29,6 +29,19 @@
       ]
     },
     {
+      "id": "disable_cortana",
+      "name": "Disable Cortana",
+      "description": "Disables Cortana via registry policy.",
+      "category": "Privacy",
+      "reversible": true,
+      "actions": [
+        { "type": "registry", "hive": "HKLM", "key": "SOFTWARE\\Policies\\Microsoft\\Windows\\Windows Search", "value": "AllowCortana", "data": "0", "kind": "DWord", "description": "Disable Cortana" }
+      ],
+      "rollback": [
+        { "type": "registry", "hive": "HKLM", "key": "SOFTWARE\\Policies\\Microsoft\\Windows\\Windows Search", "value": "AllowCortana", "data": "1", "kind": "DWord", "description": "Re-enable Cortana" }
+      ]
+    },
+    {
       "id": "high_performance_power_plan",
       "name": "High performance power plan",
       "description": "Activates the Windows high performance power scheme (SCHEME_MIN).",
@@ -52,6 +65,19 @@
       ],
       "rollback": [
         { "type": "command", "command": "powercfg /hibernate on", "description": "Re-enable hibernation" }
+      ]
+    },
+    {
+      "id": "disable_fast_startup",
+      "name": "Disable fast startup",
+      "description": "Disables hybrid boot / fast startup to avoid hibernation-related issues.",
+      "category": "Performance",
+      "reversible": true,
+      "actions": [
+        { "type": "registry", "hive": "HKLM", "key": "SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Power", "value": "HiberbootEnabled", "data": "0", "kind": "DWord", "description": "Disable hiberboot" }
+      ],
+      "rollback": [
+        { "type": "registry", "hive": "HKLM", "key": "SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Power", "value": "HiberbootEnabled", "data": "1", "kind": "DWord", "description": "Re-enable hiberboot" }
       ]
     }
   ]

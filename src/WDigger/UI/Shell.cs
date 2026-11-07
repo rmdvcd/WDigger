@@ -29,6 +29,7 @@ public sealed class Shell
                 .Title("Main menu")
                 .PageSize(10)
                 .AddChoices(
+                    "System health summary",
                     "Hardware - inventory & real-time monitoring",
                     "System repair - SFC, DISM, CHKDSK",
                     "Software - Winget, Chocolatey, bloatware",
@@ -67,12 +68,51 @@ public sealed class Shell
                     break;
                 case "Exit":
                     return;
+                case "System health summary":
+                    ShowSystemHealthSummary();
+                    break;
             }
 
             AnsiConsole.WriteLine();
             AnsiConsole.MarkupLine("[grey]Press any key to return to the main menu...[/]");
             Console.ReadKey(true);
         }
+    }
+
+    private void ShowSystemHealthSummary()
+    {
+        AnsiConsole.WriteLine();
+        var table = new Table("Component", "Detail", "Value")
+        {
+            Border = TableBorder.Rounded
+        };
+
+        // Operating system + computer system from WMI.
+        foreach (var item in _host.Inventory.GetInventory().Take(6))
+        {
+            table.AddRow(item.Category, item.Item, string.IsNullOrEmpty(item.Value) ? "n/a" : item.Value);
+        }
+
+        // Key real-time sensors (CPU temp/load, GPU temp/load) if available.
+        var readings = _host.Sensors.ReadAll();
+        var cpuTemp = readings.FirstOrDefault(r => r.HardwareType.Equals("CPU", StringComparison.OrdinalIgnoreCase) && r.SensorType.Equals("Temperature", StringComparison.OrdinalIgnoreCase));
+        var cpuLoad = readings.FirstOrDefault(r => r.HardwareType.Equals("CPU", StringComparison.OrdinalIgnoreCase) && r.SensorType.Equals("Load", StringComparison.OrdinalIgnoreCase));
+        var gpuTemp = readings.FirstOrDefault(r => r.HardwareType.Equals("Gpu", StringComparison.OrdinalIgnoreCase) && r.SensorType.Equals("Temperature", StringComparison.OrdinalIgnoreCase));
+        var gpuLoad = readings.FirstOrDefault(r => r.HardwareType.Equals("Gpu", StringComparison.OrdinalIgnoreCase) && r.SensorType.Equals("Load", StringComparison.OrdinalIgnoreCase));
+
+        if (cpuTemp is not null) table.AddRow("CPU", "Temperature", cpuTemp.DisplayValue);
+        if (cpuLoad is not null) table.AddRow("CPU", "Load", cpuLoad.DisplayValue);
+        if (gpuTemp is not null) table.AddRow("GPU", "Temperature", gpuTemp.DisplayValue);
+        if (gpuLoad is not null) table.AddRow("GPU", "Load", gpuLoad.DisplayValue);
+
+        if (readings.Count == 0)
+        {
+            table.AddRow("Sensors", "Status", "No sensor data available (run as Administrator)");
+        }
+
+        AnsiConsole.Write(table);
+        AnsiConsole.WriteLine();
+        AnsiConsole.Markup("[grey]For full details, open the Hardware module.[/]\\n");
     }
 
     private void SettingsMenu()
