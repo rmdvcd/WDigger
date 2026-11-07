@@ -14,8 +14,8 @@
 
   <ItemGroup>
     <PackageReference Include="Spectre.Console" Version="0.49.0" />
-    <PackageReference Include="LibreHardwareMonitorLib" Version="1.1.4" />
-    <PackageReference Include="System.Management" Version="8.0.0" />
+    <PackageReference Include="LibreHardwareMonitorLib" Version="0.9.7-pre781" />
+    <PackageReference Include="System.Management" Version="10.0.14" />
   </ItemGroup>
 
 </Project>
