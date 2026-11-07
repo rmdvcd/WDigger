@@ -7,6 +7,11 @@
     { "id": "Google.Chrome", "name": "Google Chrome", "source": "winget", "arguments": "--silent", "category": "Browser" },
     { "id": "Microsoft.PowerToys", "name": "PowerToys", "source": "winget", "arguments": "--silent", "category": "Utilities" },
     { "id": "OBS.OBSStudio", "name": "OBS Studio", "source": "winget", "arguments": "--silent", "category": "Media" },
-    { "id": "Winrar.Winrar", "name": "WinRAR", "source": "winget", "arguments": "--silent", "category": "Utilities" }
+    { "id": "Winrar.Winrar", "name": "WinRAR", "source": "winget", "arguments": "--silent", "category": "Utilities" },
+    { "id": "Mozilla.Firefox", "name": "Mozilla Firefox", "source": "winget", "arguments": "--silent", "category": "Browser" },
+    { "id": "Microsoft.VisualStudioCode", "name": "Visual Studio Code", "source": "winget", "arguments": "--silent", "category": "Development" },
+    { "id": "Docker.DockerDesktop", "name": "Docker Desktop", "source": "winget", "arguments": "--silent", "category": "Development" },
+    { "id": "VideoLAN.WLAN-Optimizer", "name": "WLAN Optimizer", "source": "winget", "arguments": "--silent", "category": "Utilities" },
+    { "id": "CCleaner.CCleaner", "name": "CCleaner", "source": "chocolatey", "arguments": "-y", "category": "Utilities" }
   ]
 }

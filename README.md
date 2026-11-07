@@ -131,7 +131,7 @@ example.
 | 3 – Repair | Done (functional) | SFC /scannow, DISM RestoreHealth, CHKDSK /scan /perf, Windows Update component reset, Winget cache reset — all through CommandExecutor with logging, live progress bars for long operations and plain-language result explanations |
 | 4 – Software & Tweaks | Done (functional) | Winget list/search/install (incl. unattended install from config/software.json), Appx removal, JSON-driven tweaks with registry/command actions, restore point before apply, applied-tweaks history and rollback |
 | 5 – Advanced | Done (functional) | Driver backup (Export-WindowsDriver) with progress, pnputil enum/add-driver, network reset/DNS/IP + quick DNS config, connectivity test, disk space, CHKDSK scan with progress, temp cleanup |
-| 6 – Refinement | Planned | Additional polish, more rollback implementations, extended JSON schemas |
+| 6 – Refinement | Done | System health summary on main menu, expanded config/tweaks.json and config/software.json examples, improved error handling in hardware module |
 
 ## Extending WDigger
 
