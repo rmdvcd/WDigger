@@ -1,0 +1,58 @@
+{
+  "tweaks": [
+    {
+      "id": "disable_diagtrack",
+      "name": "Disable DiagTrack telemetry service",
+      "description": "Stops and disables the Connected User Experiences and Telemetry service (DiagTrack).",
+      "category": "Privacy",
+      "reversible": true,
+      "actions": [
+        { "type": "command", "command": "sc stop DiagTrack", "description": "Stop the DiagTrack service" },
+        { "type": "command", "command": "sc config DiagTrack start= disabled", "description": "Set DiagTrack startup type to disabled" },
+        { "type": "registry", "hive": "HKLM", "key": "SYSTEM\\CurrentControlSet\\Services\\DiagTrack", "value": "Start", "data": "4", "kind": "DWord", "description": "Set Start registry value to 4 (disabled)" }
+      ],
+      "rollback": [
+        { "type": "command", "command": "sc config DiagTrack start= auto", "description": "Restore DiagTrack startup type to automatic" }
+      ]
+    },
+    {
+      "id": "disable_telemetry",
+      "name": "Disable Windows telemetry (AllowTelemetry)",
+      "description": "Sets AllowTelemetry to 0 to reduce telemetry data sent to Microsoft.",
+      "category": "Privacy",
+      "reversible": true,
+      "actions": [
+        { "type": "registry", "hive": "HKLM", "key": "SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection", "value": "AllowTelemetry", "data": "0", "kind": "DWord", "description": "Disable Windows telemetry" }
+      ],
+      "rollback": [
+        { "type": "registry", "hive": "HKLM", "key": "SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection", "value": "AllowTelemetry", "data": "1", "kind": "DWord", "description": "Restore default telemetry setting" }
+      ]
+    },
+    {
+      "id": "high_performance_power_plan",
+      "name": "High performance power plan",
+      "description": "Activates the Windows high performance power scheme (SCHEME_MIN).",
+      "category": "Performance",
+      "reversible": true,
+      "actions": [
+        { "type": "command", "command": "powercfg /setactive SCHEME_MIN", "description": "Set high performance power plan" }
+      ],
+      "rollback": [
+        { "type": "command", "command": "powercfg /setactive SCHEME_BALANCED", "description": "Restore balanced power plan" }
+      ]
+    },
+    {
+      "id": "disable_hibernation",
+      "name": "Disable hibernation",
+      "description": "Disables hibernation and removes hiberfil.sys to reclaim disk space.",
+      "category": "Performance",
+      "reversible": true,
+      "actions": [
+        { "type": "command", "command": "powercfg /hibernate off", "description": "Disable hibernation" }
+      ],
+      "rollback": [
+        { "type": "command", "command": "powercfg /hibernate on", "description": "Re-enable hibernation" }
+      ]
+    }
+  ]
+}

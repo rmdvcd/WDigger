@@ -1,0 +1,42 @@
+## WDigger - Windows diagnostics TUI (C# / .NET 8)
+
+# User-specific files
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.userprefs
+
+# Build results
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+
+# Visual Studio folders
+.vs/
+
+# Logs and runtime data produced by WDigger
+logs/
+*.log
+driver-backups/
+drivers-backup/
+
+# Local NuGet packages
+*.nupkg
+
+# IDE
+.idea/
+*.csproj.user
+*.DS_Store
+
+# Crash dumps
+WDigger.crash.log
