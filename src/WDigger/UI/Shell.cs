@@ -27,7 +27,7 @@ public sealed class Shell
         {
             var choice = AnsiConsole.Prompt(new SelectionPrompt<string>()
                 .Title("Main menu")
-                .PageSize(10)
+                .PageSize(16)
                 .AddChoices(
                     "System health summary",
                     "Hardware - inventory & real-time monitoring",
@@ -36,6 +36,12 @@ public sealed class Shell
                     "Tweaks - privacy & performance",
                     "Drivers - backup & restore",
                     "Network - reset, DNS, connectivity",
+                    "Advanced Network - IP, firewall, proxy",
+                    "Devices - printers & PnP devices",
+                    "Backup (.tibx) - Acronis restore",
+                    "Activation - Windows / Office / HEU-KMS",
+                    "File Recovery - winfr",
+                    "Events & BIOS - event log, BIOS",
                     "Disk - space & temp cleanup",
                     "Settings",
                     "Exit"));
@@ -62,6 +68,24 @@ public sealed class Shell
                     break;
                 case "Disk - space & temp cleanup":
                     new DiskModule().Run(_host);
+                    break;
+                case "Advanced Network - IP, firewall, proxy":
+                    new AdvancedNetworkModule().Run(_host);
+                    break;
+                case "Devices - printers & PnP devices":
+                    new DevicesModule().Run(_host);
+                    break;
+                case "Backup (.tibx) - Acronis restore":
+                    new BackupModule().Run(_host);
+                    break;
+                case "Activation - Windows / Office / HEU-KMS":
+                    new ActivationModule().Run(_host);
+                    break;
+                case "File Recovery - winfr":
+                    new RecoveryModule().Run(_host);
+                    break;
+                case "Events & BIOS - event log, BIOS":
+                    new EventLogBiosModule().Run(_host);
                     break;
                 case "Settings":
                     SettingsMenu();

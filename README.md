@@ -18,8 +18,8 @@ Written in **C# on .NET 8** with **Spectre.Console** for the TUI.
 | Language / runtime | C# 12, .NET 8 (Windows) |
 | TUI | Spectre.Console (tables, menus, panels, progress bars, live views) |
 | Hardware sensors | LibreHardwareMonitorLib (NuGet) |
-| Inventory / SMART / battery | System.Management (WMI) |
-| Command orchestration | DISM, SFC, CHKDSK, netsh, PowerShell, Winget, pnputil |
+| Inventory / SMART / battery / BIOS | System.Management (WMI) |
+| Command orchestration | DISM, SFC, CHKDSK, netsh, PowerShell, Winget, pnputil, winfr, wevtutil, slmgr, ospp.vbs |
 | Configuration | JSON files in `config/` (tweaks, software lists) |
 | Logging | Timestamped audit log in `logs/` (stdout + stderr per command) |
 
@@ -132,6 +132,7 @@ example.
 | 4 – Software & Tweaks | Done (functional) | Winget list/search/install (incl. unattended install from config/software.json), Appx removal, JSON-driven tweaks with registry/command actions, restore point before apply, applied-tweaks history and rollback |
 | 5 – Advanced | Done (functional) | Driver backup (Export-WindowsDriver) with progress, pnputil enum/add-driver, network reset/DNS/IP + quick DNS config, connectivity test, disk space, CHKDSK scan with progress, temp cleanup |
 | 6 – Refinement | Done | System health summary on main menu, expanded config/tweaks.json and config/software.json examples, improved error handling in hardware module |
+| 7 – Advanced tools | Done | Devices (printers/PnP), Advanced Network (static IP/DHCP/firewall/proxy/traceroute/rename), Backup (.tibx Acronis), Activation (Windows/Office/HEU-KMS detect), File Recovery (winfr), Events & BIOS (event log, BIOS, motherboard, UEFI) |
 
 ## Extending WDigger
 
