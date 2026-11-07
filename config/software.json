@@ -1,0 +1,12 @@
+{
+  "packages": [
+    { "id": "Git.Git", "name": "Git", "source": "winget", "arguments": "--silent", "category": "Development" },
+    { "id": "7zip.7zip", "name": "7-Zip", "source": "winget", "arguments": "--silent", "category": "Utilities" },
+    { "id": "Videolan.VLC", "name": "VLC media player", "source": "winget", "arguments": "--silent", "category": "Media" },
+    { "id": "Notepad++.Notepad++", "name": "Notepad++", "source": "winget", "arguments": "--silent", "category": "Utilities" },
+    { "id": "Google.Chrome", "name": "Google Chrome", "source": "winget", "arguments": "--silent", "category": "Browser" },
+    { "id": "Microsoft.PowerToys", "name": "PowerToys", "source": "winget", "arguments": "--silent", "category": "Utilities" },
+    { "id": "OBS.OBSStudio", "name": "OBS Studio", "source": "winget", "arguments": "--silent", "category": "Media" },
+    { "id": "Winrar.Winrar", "name": "WinRAR", "source": "winget", "arguments": "--silent", "category": "Utilities" }
+  ]
+}
