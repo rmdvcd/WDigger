@@ -20,6 +20,7 @@ public sealed class AppHost
     public ConfigManager Config { get; }
     public SensorService Sensors { get; }
     public InventoryService Inventory { get; }
+    public TweakHistoryService TweakHistory { get; }
 
     /// <summary>
     /// When true, every action that modifies the system is only simulated.
@@ -40,6 +41,7 @@ public sealed class AppHost
         Config = new ConfigManager(ConfigDirectory);
         Sensors = new SensorService(Logger);
         Inventory = new InventoryService(Logger);
+        TweakHistory = new TweakHistoryService(LogDirectory);
 
         Logger.Info($"WDigger started. Base directory: {BaseDirectory}");
         Logger.Info($"Config directory: {ConfigDirectory}");

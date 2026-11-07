@@ -105,6 +105,8 @@ dotnet publish -c Release -r win-x64 --self-contained false
 * Before applying any reversible tweak or major repair, WDigger attempts to
   create a **System Restore Point** via WMI (`SystemRestore.CreateRestorePoint`).
   Failure is reported but non-fatal — the operator decides whether to continue.
+* Every applied tweak is recorded in `logs/applied-tweaks.json` so it can be
+  rolled back later from **Tweaks > Roll back a previously applied tweak**.
 * Every command's full stdout/stderr, exit code and duration are written to a
   timestamped log under `logs/WDigger_yyyyMMdd_HHmmss.log` for auditing.
 
@@ -127,7 +129,7 @@ example.
 | 1 – Skeleton & UI | Done | .NET 8 project, Spectre.Console TUI, main menu, module navigation, settings, dry-run toggle |
 | 2 – Hardware | Done | WMI inventory (OS, CPU, GPU, RAM, disks, motherboard, battery, network); real-time sensor monitor via LibreHardwareMonitor with live refreshing panel |
 | 3 – Repair | Done (functional) | SFC /scannow, DISM RestoreHealth, CHKDSK /scan /perf, Windows Update component reset, Winget cache reset — all through CommandExecutor with logging, live progress bars for long operations and plain-language result explanations |
-| 4 – Software & Tweaks | Skeleton (functional) | Winget list/search/install, Appx removal, JSON-driven tweaks with registry/command actions, restore point before apply |
+| 4 – Software & Tweaks | Done (functional) | Winget list/search/install (incl. unattended install from config/software.json), Appx removal, JSON-driven tweaks with registry/command actions, restore point before apply, applied-tweaks history and rollback |
 | 5 – Advanced | Skeleton (functional) | Driver backup (Export-WindowsDriver), pnputil enum/add-driver, network reset/DNS/IP, disk space, CHKDSK, temp cleanup |
 | 6 – Refinement | Planned | Progress bars for long operations, polished UX, more rollback implementations |
 
@@ -139,8 +141,9 @@ example.
    `module.Run(host)`.
 3. Use `host.Commands.Run(...)` for native commands (honors dry-run and logs
    output), `host.Sensors.ReadAll()` for live sensors,
-   `host.Inventory.GetInventory()` for WMI inventory, and
-   `host.RestorePoints.Create(...)` for restore points.
+   `host.Inventory.GetInventory()` for WMI inventory,
+   `host.RestorePoints.Create(...)` for restore points, and
+   `host.TweakHistory.Record(...)` / `.Remove(...)` to persist rollback state.
 4. Add JSON entries to `config/tweaks.json` / `config/software.json` for
    data-driven tweaks and software lists.
 
