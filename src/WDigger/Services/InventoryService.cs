@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Management;
+using System.Runtime.Versioning;
 using WDigger.Core;
 using WDigger.Models;
 
