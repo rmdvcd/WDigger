@@ -1,4 +1,5 @@
 using System.IO;
+using System.Text;
 using WDigger.Models;
 
 namespace WDigger.Core;

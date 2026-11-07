@@ -82,7 +82,7 @@ public sealed class RepairModule : IModule
             "/c ren %SystemRoot%\\System32\\catroot2 catroot2.old");
         context.ReportProgress(++step * 100 / totalSteps);
 
-        foreach (var service in services.Reverse())
+        foreach (var service in Enumerable.Reverse(services))
         {
             context.SetStatus($"Iniciando {service}...");
             await RunCommand(host, context, token, "net", $"start {service}");
