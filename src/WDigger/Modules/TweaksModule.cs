@@ -1,206 +1,154 @@
-using System.Linq;
-using Spectre.Console;
 using WDigger.Core;
 using WDigger.Models;
+using WDigger.UI;
 
 namespace WDigger.Modules;
 
-/// <summary>
-/// Phase 4 module: applies and reverts tweaks defined in config/tweaks.json.
-/// Creates a system restore point before applying (when reversible), keeps a
-/// history of applied tweaks so they can be rolled back later, and fully
-/// supports dry-run mode.
-/// </summary>
-public class TweaksModule : IModule
+public sealed class TweaksModule : IModule
 {
-    public string Name => "Tweaks";
-    public string Description => "Privacy, performance and telemetry tweaks from config/tweaks.json with rollback support.";
+    public string Name => "Ajustes y privacidad";
+    public string Description => "Ajustes definidos en JSON, punto de restauración, historial y reversión.";
 
-    public void Run(AppHost host)
+    public IReadOnlyList<ModuleAction> CreateActions(AppHost host) => new[]
     {
-        var tweaks = host.Config.Tweaks;
-        if (tweaks.Count == 0)
+        new ModuleAction(
+            "Aplicar un ajuste",
+            "Muestra una vista previa y aplica un ajuste de config/tweaks.json. Crea un punto de restauración si es reversible.",
+            (context, token) => ApplyTweakAsync(host, context, token)),
+        new ModuleAction(
+            "Revertir un ajuste aplicado",
+            "Ejecuta las acciones de reversión de un ajuste registrado previamente.",
+            (context, token) => RollbackTweakAsync(host, context, token)),
+        new ModuleAction(
+            "Ver historial de ajustes",
+            "Muestra los ajustes aplicados y su fecha. Las simulaciones no se guardan como cambios reales.",
+            (context, token) => ShowHistory(host, context, token))
+    };
+
+    private static async Task ApplyTweakAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
+    {
+        if (host.Config.Tweaks.Count == 0)
         {
-            AnsiConsole.MarkupLine("[yellow]No tweaks found in config/tweaks.json.[/]");
+            context.WriteLine("No se encontraron ajustes en config/tweaks.json.", OutputKind.Warning);
             return;
         }
 
-        while (true)
+        var tweak = context.Choose("Aplicar ajuste", "Selecciona un ajuste:", host.Config.Tweaks,
+            item => $"{item.Name} · {item.Category} · {(item.Reversible ? "Reversible" : "No reversible")}");
+        if (tweak is null)
         {
-            var choice = AnsiConsole.Prompt(new SelectionPrompt<string>()
-                .Title("Tweaks module")
-                .AddChoices(
-                    "Apply a tweak",
-                    "Roll back a previously applied tweak",
-                    "Show applied tweaks history",
-                    "Back to main menu"));
-
-            switch (choice)
-            {
-                case "Apply a tweak":
-                    ApplyTweakMenu(host, tweaks);
-                    break;
-                case "Roll back a previously applied tweak":
-                    RollbackTweakMenu(host, tweaks);
-                    break;
-                case "Show applied tweaks history":
-                    ShowHistory(host);
-                    break;
-                case "Back to main menu":
-                    return;
-            }
-
-            AnsiConsole.WriteLine();
-            AnsiConsole.MarkupLine("[grey]Press any key to return...[/]");
-            Console.ReadKey(true);
-        }
-    }
-
-    private static void ApplyTweakMenu(AppHost host, List<TweakDefinition> tweaks)
-    {
-        var table = new Table("Id", "Name", "Category", "Reversible")
-        {
-            Border = TableBorder.Rounded
-        };
-        foreach (var t in tweaks)
-        {
-            table.AddRow(t.Id, t.Name, t.Category, t.Reversible ? "Yes" : "No");
-        }
-        AnsiConsole.Write(table);
-
-        var choice = AnsiConsole.Prompt(new SelectionPrompt<string>()
-            .Title("Select a tweak to apply")
-            .AddChoices(tweaks.Select(t => t.Id).Append("Back").ToArray()));
-
-        if (choice == "Back") return;
-
-        var tweak = tweaks.First(t => t.Id == choice);
-        ApplyTweak(host, tweak);
-    }
-
-    private static void RollbackTweakMenu(AppHost host, List<TweakDefinition> tweaks)
-    {
-        var history = host.TweakHistory.Records;
-        if (history.Count == 0)
-        {
-            AnsiConsole.MarkupLine("[yellow]No tweaks have been applied yet.[/]");
             return;
         }
 
-        var appliedIds = new HashSet<string>(history.Select(r => r.TweakId), StringComparer.OrdinalIgnoreCase);
-        var applicable = tweaks.Where(t => appliedIds.Contains(t.Id) && t.Reversible && t.Rollback.Count > 0).ToList();
-        if (applicable.Count == 0)
+        context.ShowTable($"Vista previa · {tweak.Name}", new[] { "Tipo", "Acción" },
+            tweak.Actions.Select(action => new[] { action.Type, FormatAction(action) }));
+        context.WriteLine(tweak.Description, OutputKind.Muted);
+        if (!context.Confirm("Aplicar ajuste", $"{tweak.Description}\n\n¿Aplicar «{tweak.Name}»?"))
         {
-            AnsiConsole.MarkupLine("[yellow]No applied tweaks are eligible for rollback.[/]");
             return;
         }
-
-        var choice = AnsiConsole.Prompt(new SelectionPrompt<TweakDefinition>()
-            .Title("Select a tweak to roll back")
-            .UseConverter(t => $"{t.Name} ({t.Id})")
-            .AddChoices(applicable));
-
-        if (choice == null) return;
-
-        AnsiConsole.WriteLine();
-        AnsiConsole.MarkupLine($"[bold]Roll back: {choice.Name}[/]");
-        AnsiConsole.MarkupLine($"[grey]{choice.Description}[/]");
-
-        var preview = new Table("Rollback Action", "Detail")
-        {
-            Border = TableBorder.Rounded
-        };
-        foreach (var action in choice.Rollback)
-        {
-            preview.AddRow(action.Type, FormatRollbackAction(action));
-        }
-        AnsiConsole.Write(preview);
-
-        if (!Confirm(host, choice)) return;
-
-        if (!host.DryRun)
-        {
-            var created = host.RestorePoints.Create($"WDigger rollback: {choice.Name}");
-            AnsiConsole.MarkupLine(created
-                ? "[green]System restore point created before rolling back.[/]"
-                : "[yellow]Restore point could not be created; continuing anyway.[/]");
-        }
-
-        foreach (var action in choice.Rollback)
-        {
-            ExecuteRollbackAction(host, action);
-        }
-
-        host.TweakHistory.Remove(choice.Id);
-        AnsiConsole.MarkupLine($"[green]Tweak '{choice.Name}' rolled back (simulated if dry-run mode is on).[/]");
-    }
-
-    private static void ShowHistory(AppHost host)
-    {
-        var history = host.TweakHistory.Records;
-        if (history.Count == 0)
-        {
-            AnsiConsole.MarkupLine("[yellow]No tweaks have been applied yet.[/]");
-            return;
-        }
-
-        var table = new Table("Tweak Id", "Name", "Applied At")
-        {
-            Border = TableBorder.Rounded
-        };
-        foreach (var record in history.OrderByDescending(r => r.AppliedAt))
-        {
-            table.AddRow(record.TweakId, record.TweakName, record.AppliedAt.ToString("yyyy-MM-dd HH:mm"));
-        }
-        AnsiConsole.Write(table);
-    }
-
-    private static void ApplyTweak(AppHost host, TweakDefinition tweak)
-    {
-        AnsiConsole.WriteLine();
-        AnsiConsole.MarkupLine($"[bold]{tweak.Name}[/]");
-        AnsiConsole.MarkupLine($"[grey]{tweak.Description}[/]");
-
-        var preview = new Table("Action", "Detail")
-        {
-            Border = TableBorder.Rounded
-        };
-        foreach (var action in tweak.Actions)
-        {
-            preview.AddRow(action.Type, FormatAction(action));
-        }
-        AnsiConsole.Write(preview);
-
-        if (!Confirm(host, tweak)) return;
 
         if (tweak.Reversible && !host.DryRun)
         {
-            var created = host.RestorePoints.Create($"WDigger tweak: {tweak.Name}");
-            AnsiConsole.MarkupLine(created
-                ? "[green]System restore point created before applying the tweak.[/]"
-                : "[yellow]Restore point could not be created; continuing anyway.[/]");
+            context.SetStatus("Creando punto de restauración...");
+            var created = await Task.Run(() => host.RestorePoints.Create($"WDigger tweak: {tweak.Name}"), token);
+            context.WriteLine(created
+                ? "Punto de restauración creado."
+                : "No se pudo crear el punto de restauración; se continuará según lo confirmado.",
+                created ? OutputKind.Success : OutputKind.Warning);
         }
 
-        foreach (var action in tweak.Actions)
+        for (var index = 0; index < tweak.Actions.Count; index++)
         {
-            ExecuteAction(host, action);
+            await ExecuteActionAsync(context, tweak.Actions[index], token);
+            context.ReportProgress((index + 1) * 100 / tweak.Actions.Count);
         }
 
-        host.TweakHistory.Record(tweak.Id, tweak.Name);
-        AnsiConsole.MarkupLine($"[green]Tweak '{tweak.Name}' applied (simulated if dry-run mode is on).[/]");
+        if (!host.DryRun)
+        {
+            host.TweakHistory.Record(tweak.Id, tweak.Name);
+        }
+        context.WriteLine(host.DryRun
+            ? $"Ajuste «{tweak.Name}» simulado; no se guardó en el historial."
+            : $"Ajuste «{tweak.Name}» aplicado y registrado.", OutputKind.Success);
     }
 
-    private static string FormatAction(TweakAction action) => action.Type switch
+    private static async Task RollbackTweakAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
     {
-        "registry" => $"reg add \"{action.Hive}\\{action.Key}\" /v {action.Value} /t {MapKind(action.Kind)} /d {action.Data} /f",
-        _ => action.Command
-    };
+        var appliedIds = host.TweakHistory.Records
+            .Select(record => record.TweakId)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var applicable = host.Config.Tweaks
+            .Where(tweak => appliedIds.Contains(tweak.Id) && tweak.Reversible && tweak.Rollback.Count > 0)
+            .ToList();
 
-    private static string FormatRollbackAction(TweakAction action) => action.Type switch
+        if (applicable.Count == 0)
+        {
+            context.WriteLine("No hay ajustes aplicados que se puedan revertir.", OutputKind.Warning);
+            return;
+        }
+
+        var tweak = context.Choose("Revertir ajuste", "Selecciona el ajuste que quieres revertir:",
+            applicable, item => $"{item.Name} ({item.Id})");
+        if (tweak is null)
+        {
+            return;
+        }
+
+        context.ShowTable($"Reversión · {tweak.Name}", new[] { "Tipo", "Acción" },
+            tweak.Rollback.Select(action => new[] { action.Type, FormatAction(action) }));
+        if (!context.Confirm("Revertir ajuste", $"¿Ejecutar la reversión de «{tweak.Name}»?"))
+        {
+            return;
+        }
+
+        if (!host.DryRun)
+        {
+            var created = await Task.Run(() => host.RestorePoints.Create($"WDigger rollback: {tweak.Name}"), token);
+            context.WriteLine(created ? "Punto de restauración creado." : "No se pudo crear el punto de restauración.",
+                created ? OutputKind.Success : OutputKind.Warning);
+        }
+
+        foreach (var action in tweak.Rollback)
+        {
+            await ExecuteActionAsync(context, action, token);
+        }
+
+        if (!host.DryRun)
+        {
+            host.TweakHistory.Remove(tweak.Id);
+        }
+        context.WriteLine(host.DryRun ? "Reversión simulada." : "Ajuste revertido y retirado del historial.", OutputKind.Success);
+    }
+
+    private static Task ShowHistory(AppHost host, ModuleExecutionContext context, CancellationToken token)
     {
-        "registry" => $"reg add \"{action.Hive}\\{action.Key}\" /v {action.Value} /t {MapKind(action.Kind)} /d {action.Data} /f",
-        _ => action.Command
-    };
+        _ = token;
+        var records = host.TweakHistory.Records.OrderByDescending(record => record.AppliedAt).ToList();
+        if (records.Count == 0)
+        {
+            context.WriteLine("Todavía no hay ajustes aplicados.", OutputKind.Warning);
+            return Task.CompletedTask;
+        }
+
+        context.ShowTable("Historial de ajustes", new[] { "Id", "Nombre", "Aplicado" },
+            records.Select(record => new[]
+            {
+                record.TweakId,
+                record.TweakName,
+                record.AppliedAt.ToString("yyyy-MM-dd HH:mm")
+            }));
+        return Task.CompletedTask;
+    }
+
+    private static Task<CommandResult> ExecuteActionAsync(
+        ModuleExecutionContext context, TweakAction action, CancellationToken token)
+        => context.RunCommandAsync("cmd", $"/c \"{FormatAction(action)}\"", token);
+
+    private static string FormatAction(TweakAction action)
+        => action.Type.Equals("registry", StringComparison.OrdinalIgnoreCase)
+            ? $"reg add \"{action.Hive}\\{action.Key}\" /v {action.Value} /t {MapKind(action.Kind)} /d {action.Data} /f"
+            : action.Command;
 
     private static string MapKind(string kind) => kind switch
     {
@@ -211,30 +159,4 @@ public class TweaksModule : IModule
         "Binary" => "REG_BINARY",
         _ => "REG_DWORD"
     };
-
-    private static bool Confirm(AppHost host, TweakDefinition tweak)
-    {
-        AnsiConsole.MarkupLine(host.DryRun
-            ? "[grey][DRY-RUN - commands will be simulated][/]"
-            : "[red][LIVE - commands and registry changes will run][/]");
-        return host.DryRun || AnsiConsole.Confirm($"Apply tweak '{tweak.Name}'?");
-    }
-
-    private static void ExecuteAction(AppHost host, TweakAction action)
-    {
-        var commandLine = action.Type.Equals("registry", StringComparison.OrdinalIgnoreCase)
-            ? $"reg add \"{action.Hive}\\{action.Key}\" /v {action.Value} /t {MapKind(action.Kind)} /d {action.Data} /f"
-            : action.Command;
-
-        host.Commands.Run("cmd", $"/c \"{commandLine}\"");
-    }
-
-    private static void ExecuteRollbackAction(AppHost host, TweakAction action)
-    {
-        var commandLine = action.Type.Equals("registry", StringComparison.OrdinalIgnoreCase)
-            ? $"reg add \"{action.Hive}\\{action.Key}\" /v {action.Value} /t {MapKind(action.Kind)} /d {action.Data} /f"
-            : action.Command;
-
-        host.Commands.Run("cmd", $"/c \"{commandLine}\"");
-    }
 }

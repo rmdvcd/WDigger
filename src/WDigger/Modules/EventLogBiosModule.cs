@@ -1,97 +1,77 @@
 using System.Management;
-using Spectre.Console;
 using WDigger.Core;
+using WDigger.Models;
+using WDigger.UI;
 
 namespace WDigger.Modules;
 
-/// <summary>
-/// Module for Windows Event Viewer and BIOS/UEFI information.
-/// </summary>
-public class EventLogBiosModule : IModule
+public sealed class EventLogBiosModule : IModule
 {
-    public string Name => "Events & BIOS";
-    public string Description => "Windows Event Viewer and BIOS/UEFI information.";
+    public string Name => "Eventos y BIOS";
+    public string Description => "Registros de eventos de Windows e información de BIOS, placa base y firmware.";
 
-    public void Run(AppHost host)
+    public IReadOnlyList<ModuleAction> CreateActions(AppHost host) => new[]
     {
-        while (true)
+        new ModuleAction("Listar registros de eventos", "Enumera los registros disponibles mediante wevtutil.",
+            (context, token) => Run(host, context, token, "wevtutil", "el")),
+        new ModuleAction("Consultar últimos 20 eventos", "Muestra los eventos más recientes de System, Application u otro registro.",
+            (context, token) => QueryEventLogAsync(host, context, token)),
+        new ModuleAction("Información de BIOS", "Consulta fabricante, versión y fecha de la BIOS.",
+            (context, token) => ShowWmiAsync(host, context, token,
+                "SELECT Name, Version, ReleaseDate, Manufacturer, SMBIOSBIOSVersion FROM Win32_BIOS", "BIOS")),
+        new ModuleAction("Información de placa base", "Consulta fabricante, producto, número de serie y versión.",
+            (context, token) => ShowWmiAsync(host, context, token,
+                "SELECT Manufacturer, Product, SerialNumber, Version FROM Win32_BaseBoard", "Placa base")),
+        new ModuleAction("Información UEFI / firmware", "Muestra los datos de firmware expuestos por Win32_BIOS.",
+            (context, token) => ShowWmiAsync(host, context, token,
+                "SELECT Name, Manufacturer, Version, ReleaseDate FROM Win32_BIOS", "Firmware"))
+    };
+
+    private static async Task QueryEventLogAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
+    {
+        _ = host;
+        var log = context.Prompt("Consultar eventos", "Nombre del registro (System, Application, Security...):", "System");
+        if (log is not null)
         {
-            var choice = AnsiConsole.Prompt(new SelectionPrompt<string>()
-                .Title("Events & BIOS module")
-                .AddChoices(
-                    "List event logs",
-                    "Query event log (last 20 entries)",
-                    "BIOS information",
-                    "Motherboard information",
-                    "UEFI / Firmware information",
-                    "Back to main menu"));
-
-            switch (choice)
-            {
-                case "List event logs":
-                    host.Commands.Run("wevtutil", "el");
-                    break;
-                case "Query event log (last 20 entries)":
-                    QueryEventLog(host);
-                    break;
-                case "BIOS information":
-                    ShowWmi(host, "SELECT Name, Version, ReleaseDate, Manufacturer, SMBIOSBIOSVersion FROM Win32_BIOS", "BIOS");
-                    break;
-                case "Motherboard information":
-                    ShowWmi(host, "SELECT Manufacturer, Product, SerialNumber, Version FROM Win32_BaseBoard", "Motherboard");
-                    break;
-                case "UEFI / Firmware information":
-                    ShowWmi(host, "SELECT Name, Manufacturer, Version, ReleaseDate FROM Win32_BIOS", "Firmware");
-                    break;
-                case "Back to main menu":
-                    return;
-            }
-
-            AnsiConsole.WriteLine();
-            AnsiConsole.MarkupLine("[grey]Press any key to return...[/]");
-            Console.ReadKey(true);
+            await context.RunCommandAsync("wevtutil", $"qe \"{log}\" /c:20 /f:text /rd:true", token);
         }
     }
 
-    private static void QueryEventLog(AppHost host)
+    private static async Task ShowWmiAsync(
+        AppHost host, ModuleExecutionContext context, CancellationToken token, string wql, string title)
     {
-        var log = AnsiConsole.Ask<string>("Event log name (e.g. System, Application, Security)");
-        if (string.IsNullOrWhiteSpace(log)) return;
-        host.Commands.Run("wevtutil", $"qe \"{log}\" /c:20 /f:text /rd:true");
+        var rows = await Task.Run(() => QueryWmi(wql), token);
+        token.ThrowIfCancellationRequested();
+        if (rows.Count == 0)
+        {
+            context.WriteLine("La consulta WMI no devolvió datos.", OutputKind.Warning);
+            return;
+        }
+        context.ShowTable(title, new[] { "Propiedad", "Valor" }, rows);
     }
 
-    private static void ShowWmi(AppHost host, string wql, string title)
+    private static List<string[]> QueryWmi(string wql)
     {
-        var table = new Table("Property", "Value")
+        var rows = new List<string[]>();
+        using var searcher = new ManagementObjectSearcher(wql);
+        using var collection = searcher.Get();
+        foreach (ManagementObject item in collection)
         {
-            Border = TableBorder.Rounded,
-            Title = new TableTitle(title)
-        };
-
-        try
-        {
-            using var searcher = new ManagementObjectSearcher(wql);
-            foreach (ManagementObject obj in searcher.Get())
+            using (item)
             {
-                foreach (PropertyData prop in obj.Properties)
+                foreach (PropertyData property in item.Properties)
                 {
-                    table.AddRow(prop.Name, prop.Value?.ToString() ?? "n/a");
+                    rows.Add(new[] { property.Name, property.Value?.ToString() ?? "n/a" });
                 }
             }
         }
-        catch (Exception ex)
-        {
-            AnsiConsole.MarkupLine($"[red]WMI query failed: {ex.Message}[/]");
-            return;
-        }
+        return rows;
+    }
 
-        if (table.Rows.Count == 0)
-        {
-            AnsiConsole.MarkupLine("[yellow]No data returned.[/]");
-        }
-        else
-        {
-            AnsiConsole.Write(table);
-        }
+    private static Task<CommandResult> Run(
+        AppHost host, ModuleExecutionContext context, CancellationToken token, string fileName, string arguments)
+    {
+        _ = host;
+        return context.RunCommandAsync(fileName, arguments, token);
     }
 }

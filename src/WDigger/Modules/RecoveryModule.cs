@@ -1,74 +1,57 @@
-using Spectre.Console;
 using WDigger.Core;
+using WDigger.Models;
+using WDigger.UI;
 
 namespace WDigger.Modules;
 
-/// <summary>
-/// Module for deleted file recovery using Windows File Recovery (winfr).
-/// </summary>
-public class RecoveryModule : IModule
+public sealed class RecoveryModule : IModule
 {
-    public string Name => "File Recovery";
-    public string Description => "Deleted file recovery using Windows File Recovery (winfr).";
+    public string Name => "Recuperación de archivos";
+    public string Description => "Recuperación de archivos eliminados con Windows File Recovery (winfr).";
 
-    public void Run(AppHost host)
+    public IReadOnlyList<ModuleAction> CreateActions(AppHost host) => new[]
     {
-        while (true)
-        {
-            var choice = AnsiConsole.Prompt(new SelectionPrompt<string>()
-                .Title("File Recovery module")
-                .AddChoices(
-                    "Check winfr availability",
-                    "List drives",
-                    "Recover deleted files (winfr)",
-                    "Back to main menu"));
+        new ModuleAction("Comprobar Windows File Recovery", "Muestra la ayuda de winfr para confirmar que está disponible.",
+            (context, token) => Run(host, context, token, "winfr", "/?")),
+        new ModuleAction("Listar unidades", "Muestra las unidades lógicas y su espacio disponible.",
+            (context, token) => Run(host, context, token, "powershell",
+                "-NoProfile -Command \"Get-CimInstance Win32_LogicalDisk | Select-Object DeviceID, DriveType, Size, FreeSpace | Format-Table -AutoSize\"")),
+        new ModuleAction("Recuperar archivos eliminados", "Recupera datos a otra unidad mediante winfr y un filtro opcional.",
+            (context, token) => RecoverFilesAsync(host, context, token), changesSystem: true,
+            confirmation: "La recuperación escribirá archivos en la unidad de destino. Debe ser distinta de la unidad de origen.")
+    };
 
-            switch (choice)
-            {
-                case "Check winfr availability":
-                    host.Commands.Run("winfr", "/?");
-                    break;
-                case "List drives":
-                    host.Commands.Run("powershell", "-Command \"Get-CimInstance Win32_LogicalDisk | Select-Object DeviceID, DriveType, Size, FreeSpace | Format-Table -AutoSize\"");
-                    break;
-                case "Recover deleted files (winfr)":
-                    RecoverFiles(host);
-                    break;
-                case "Back to main menu":
-                    return;
-            }
-
-            AnsiConsole.WriteLine();
-            AnsiConsole.MarkupLine("[grey]Press any key to return...[/]");
-            Console.ReadKey(true);
-        }
-    }
-
-    private static void RecoverFiles(AppHost host)
+    private static async Task RecoverFilesAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
     {
-        AnsiConsole.MarkupLine("[red]Warning:[/] file recovery requires Windows File Recovery (winfr) from Microsoft Store. Run as Administrator.");
-        var source = AnsiConsole.Ask<string>("Source drive (e.g. C:)");
-        if (string.IsNullOrWhiteSpace(source)) return;
-        var destination = AnsiConsole.Ask<string>("Destination drive (must differ from source, e.g. D:)");
-        if (string.IsNullOrWhiteSpace(destination)) return;
-        var mode = AnsiConsole.Prompt(new SelectionPrompt<string>()
-            .Title("Recovery mode")
-            .AddChoices("Default", "Segment", "Signature"));
-        var filter = AnsiConsole.Ask<string>("File filter (e.g. *.pdf, *.jpg, or leave empty for all)");
-        if (!Confirm(host)) return;
-
-        var args = $"\"{source}\" \"{destination}\" /{mode.ToLower()}";
-        if (!string.IsNullOrWhiteSpace(filter))
+        _ = host;
+        var source = context.Prompt("Recuperar archivos", "Unidad de origen (por ejemplo, C:):");
+        if (source is null) return;
+        var destination = context.Prompt("Recuperar archivos", "Unidad de destino, distinta del origen (por ejemplo, D:):");
+        if (destination is null) return;
+        if (NormalizeDrive(source).Equals(NormalizeDrive(destination), StringComparison.OrdinalIgnoreCase))
         {
-            args += $" /{filter}";
+            context.WriteLine("El origen y el destino deben ser unidades diferentes.", OutputKind.Warning);
+            return;
         }
 
-        host.Commands.Run("winfr", args);
+        var mode = context.Choose("Modo de recuperación", "Selecciona el modo:",
+            new[] { "Default", "Segment", "Signature" }, item => item);
+        if (mode is null) return;
+        var filter = context.Prompt("Recuperar archivos",
+            "Filtro opcional (por ejemplo, *.pdf o *.jpg):", allowEmpty: true);
+        if (filter is null) return;
+
+        var arguments = $"\"{source}\" \"{destination}\" /{mode.ToLowerInvariant()}";
+        if (!string.IsNullOrWhiteSpace(filter)) arguments += $" /n \"{filter}\"";
+        await context.RunCommandAsync("winfr", arguments, token);
     }
 
-    private static bool Confirm(AppHost host)
+    private static string NormalizeDrive(string value) => value.Trim().TrimEnd('\\', '/', ':');
+
+    private static Task<CommandResult> Run(
+        AppHost host, ModuleExecutionContext context, CancellationToken token, string fileName, string arguments)
     {
-        AnsiConsole.MarkupLine(host.DryRun ? "[grey][DRY-RUN][/]" : "[red][LIVE - changes will be applied][/]");
-        return host.DryRun || AnsiConsole.Confirm("Apply this action on the real system?");
+        _ = host;
+        return context.RunCommandAsync(fileName, arguments, token);
     }
 }

@@ -1,0 +1,49 @@
+name: Portable Windows build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish-win-x64:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install .NET 8 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore "src\WDigger\WDigger.csproj"
+
+      - name: Publish native portable EXE
+        run: dotnet publish "src\WDigger\WDigger.csproj" -c Release -p:PublishProfile=Portable-win-x64 --no-restore
+
+      - name: Verify single-file output
+        shell: pwsh
+        run: |
+          $output = "artifacts\portable"
+          $files = @(Get-ChildItem -LiteralPath $output -File)
+          if ($files.Count -ne 1 -or $files[0].Name -ne "WDigger.exe") {
+            $files | Select-Object Name, Length | Format-Table | Out-String | Write-Host
+            throw "Expected exactly one portable WDigger.exe in $output"
+          }
+          if ($files[0].Length -lt 10MB) {
+            throw "The executable is unexpectedly small for a self-contained build"
+          }
+          Write-Host "Portable EXE verified: $($files[0].Length) bytes"
+
+      - name: Upload WDigger portable
+        uses: actions/upload-artifact@v4
+        with:
+          name: WDigger-portable-win-x64
+          path: artifacts/portable/WDigger.exe
+          if-no-files-found: error
+          retention-days: 14

@@ -1,175 +1,117 @@
-using System.Collections.Generic;
 using System.Management;
-using Spectre.Console;
 using WDigger.Core;
+using WDigger.UI;
 
 namespace WDigger.Modules;
 
-/// <summary>
-/// Module for printers and PnP device management.
-/// </summary>
-public class DevicesModule : IModule
+public sealed class DevicesModule : IModule
 {
-    public string Name => "Devices";
-    public string Description => "Printers, PnP devices and device management.";
+    public string Name => "Dispositivos";
+    public string Description => "Impresoras, dispositivos Plug and Play y activación de hardware.";
 
-    public void Run(AppHost host)
+    public IReadOnlyList<ModuleAction> CreateActions(AppHost host) => new[]
     {
-        while (true)
-        {
-            var choice = AnsiConsole.Prompt(new SelectionPrompt<string>()
-                .Title("Devices module")
-                .AddChoices(
-                    "List installed printers",
-                    "Add network printer",
-                    "Remove a printer",
-                    "List PnP devices",
-                    "Enable / Disable a device",
-                    "Back to main menu"));
+        new ModuleAction("Listar impresoras", "Muestra nombre, estado, puerto, uso compartido y impresora predeterminada.",
+            (context, token) => ListPrintersAsync(host, context, token)),
+        new ModuleAction("Agregar impresora de red", "Registra una impresora mediante su IP o nombre de host.",
+            (context, token) => AddNetworkPrinterAsync(host, context, token), changesSystem: true),
+        new ModuleAction("Quitar una impresora", "Elimina una impresora instalada por su nombre exacto.",
+            (context, token) => RemovePrinterAsync(host, context, token), changesSystem: true),
+        new ModuleAction("Listar dispositivos PnP", "Consulta nombre, estado, clase e identificador de cada dispositivo.",
+            (context, token) => ListPnpDevicesAsync(host, context, token)),
+        new ModuleAction("Habilitar o deshabilitar dispositivo", "Aplica Enable-PnpDevice o Disable-PnpDevice a un ID de instancia.",
+            (context, token) => EnableDisableDeviceAsync(host, context, token), changesSystem: true,
+            confirmation: "Deshabilitar un dispositivo esencial puede hacer que el equipo deje de responder.")
+    };
 
-            switch (choice)
+    private static async Task ListPrintersAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
+    {
+        var rows = await Task.Run(() => WmiQuery(host,
+            "SELECT Name, Status, PortName, Shared, Default FROM Win32_Printer"), token);
+        context.ShowTable("Impresoras instaladas", new[] { "Nombre", "Estado", "Puerto", "Compartida", "Predeterminada" },
+            rows.Select(row => new[]
             {
-                case "List installed printers":
-                    ListPrinters(host);
-                    break;
-                case "Add network printer":
-                    AddNetworkPrinter(host);
-                    break;
-                case "Remove a printer":
-                    RemovePrinter(host);
-                    break;
-                case "List PnP devices":
-                    ListPnpDevices(host);
-                    break;
-                case "Enable / Disable a device":
-                    EnableDisableDevice(host);
-                    break;
-                case "Back to main menu":
-                    return;
-            }
-
-            AnsiConsole.WriteLine();
-            AnsiConsole.MarkupLine("[grey]Press any key to return...[/]");
-            Console.ReadKey(true);
-        }
+                Get(row, "Name"), Get(row, "Status"), Get(row, "PortName"), Get(row, "Shared"), Get(row, "Default")
+            }));
+        if (rows.Count == 0) context.WriteLine("No se encontraron impresoras.", OutputKind.Warning);
     }
 
-    private static void ListPrinters(AppHost host)
+    private static async Task AddNetworkPrinterAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
     {
-        var table = new Table("Name", "Status", "Port", "Shared", "Default")
-        {
-            Border = TableBorder.Rounded
-        };
-
-        foreach (var row in WmiQuery(host, "SELECT Name, Status, PortName, Shared, Default FROM Win32_Printer"))
-        {
-            table.AddRow(
-                Get(row, "Name") ?? "n/a",
-                Get(row, "Status") ?? "n/a",
-                Get(row, "PortName") ?? "n/a",
-                Get(row, "Shared") ?? "False",
-                Get(row, "Default") ?? "False"
-            );
-        }
-
-        if (table.Rows.Count == 0)
-        {
-            AnsiConsole.MarkupLine("[yellow]No printers found.[/]");
-        }
-        else
-        {
-            AnsiConsole.Write(table);
-        }
+        _ = host;
+        var ip = context.Prompt("Agregar impresora de red", "Dirección IP o nombre de host:");
+        if (ip is null) return;
+        var name = context.Prompt("Agregar impresora de red", "Nombre para mostrar:", ip);
+        if (name is null) return;
+        await context.RunCommandAsync("rundll32.exe",
+            $"printui.dll,PrintUIEntry /if /b \"{name}\" /r \"IP_{ip}\" /m \"Generic Printer\" /z", token);
     }
 
-    private static void AddNetworkPrinter(AppHost host)
+    private static async Task RemovePrinterAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
     {
-        AnsiConsole.MarkupLine("[yellow]Adding a network printer requires Administrator rights.[/]");
-        var ip = AnsiConsole.Ask<string>("Printer IP address or hostname");
-        if (string.IsNullOrWhiteSpace(ip)) return;
-        var name = AnsiConsole.Ask<string>("Printer name (display name)", ip);
-        if (!Confirm(host)) return;
-
-        host.Commands.Run("rundll32.exe", $"printui.dll,PrintUIEntry /if /b \"{name}\" /r \"IP_{ip}\" /m \"Generic Printer\" /z");
+        _ = host;
+        var name = context.Prompt("Quitar impresora", "Nombre exacto de la impresora:");
+        if (name is null) return;
+        await context.RunCommandAsync("rundll32.exe", $"printui.dll,PrintUIEntry /dl /n \"{name}\"", token);
     }
 
-    private static void RemovePrinter(AppHost host)
+    private static async Task ListPnpDevicesAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
     {
-        var name = AnsiConsole.Ask<string>("Printer name to remove");
-        if (string.IsNullOrWhiteSpace(name)) return;
-        if (!Confirm(host)) return;
-        host.Commands.Run("rundll32.exe", $"printui.dll,PrintUIEntry /dl /n \"{name}\"");
+        context.SetStatus("Consultando dispositivos PnP...");
+        var rows = await Task.Run(() => WmiQuery(host,
+            "SELECT Name, Status, ClassGuid, PNPDeviceID FROM Win32_PnPEntity WHERE Name IS NOT NULL"), token);
+        token.ThrowIfCancellationRequested();
+        context.ShowTable("Dispositivos Plug and Play", new[] { "Nombre", "Estado", "Clase", "ID de dispositivo" },
+            rows.Select(row => new[]
+            {
+                Get(row, "Name"), Get(row, "Status"), Get(row, "ClassGuid"), Get(row, "PNPDeviceID")
+            }));
+        context.WriteLine($"{rows.Count} dispositivos encontrados.", OutputKind.Success);
     }
 
-    private static void ListPnpDevices(AppHost host)
+    private static async Task EnableDisableDeviceAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
     {
-        var table = new Table("Name", "Status", "Class", "Device ID")
-        {
-            Border = TableBorder.Rounded
-        };
+        _ = host;
+        var instanceId = context.Prompt("Habilitar o deshabilitar", "ID de instancia (PNPDeviceID):");
+        if (instanceId is null) return;
+        var choice = context.Choose("Acción del dispositivo", "Selecciona la acción:",
+            new[] { "Habilitar", "Deshabilitar" }, item => item);
+        if (choice is null) return;
 
-        foreach (var row in WmiQuery(host, "SELECT Name, Status, ClassGuid, PNPDeviceID FROM Win32_PnPEntity WHERE Name IS NOT NULL"))
-        {
-            table.AddRow(
-                Get(row, "Name") ?? "n/a",
-                Get(row, "Status") ?? "n/a",
-                Get(row, "ClassGuid") ?? "n/a",
-                Get(row, "PNPDeviceID") ?? "n/a"
-            );
-        }
-
-        if (table.Rows.Count == 0)
-        {
-            AnsiConsole.MarkupLine("[yellow]No PnP devices found.[/]");
-        }
-        else
-        {
-            AnsiConsole.Write(table);
-        }
+        var command = choice == "Habilitar" ? "Enable-PnpDevice" : "Disable-PnpDevice";
+        var escaped = instanceId.Replace("'", "''");
+        await context.RunCommandAsync("powershell",
+            $"-NoProfile -Command \"{command} -InstanceId '{escaped}' -Confirm:$false\"", token);
     }
 
-    private static void EnableDisableDevice(AppHost host)
-    {
-        var instanceId = AnsiConsole.Ask<string>("Device Instance ID (PNPDeviceID)");
-        if (string.IsNullOrWhiteSpace(instanceId)) return;
-        var enable = AnsiConsole.Confirm("Enable device? (No = Disable)");
-        if (!Confirm(host)) return;
-
-        var action = enable ? "Enable-PnpDevice" : "Disable-PnpDevice";
-        host.Commands.Run("powershell", $"-Command \"{action} -InstanceId '{instanceId}' -Confirm:$false\"");
-    }
-
-    private static bool Confirm(AppHost host)
-    {
-        AnsiConsole.MarkupLine(host.DryRun ? "[grey][DRY-RUN][/]" : "[red][LIVE - changes will be applied][/]");
-        return host.DryRun || AnsiConsole.Confirm("Apply this action on the real system?");
-    }
-
-    private static IEnumerable<Dictionary<string, object?>> WmiQuery(AppHost host, string wql)
+    private static List<Dictionary<string, object?>> WmiQuery(AppHost host, string wql)
     {
         var results = new List<Dictionary<string, object?>>();
         try
         {
             using var searcher = new ManagementObjectSearcher(wql);
-            foreach (ManagementObject obj in searcher.Get())
+            using var collection = searcher.Get();
+            foreach (ManagementObject item in collection)
             {
-                var row = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-                foreach (PropertyData prop in obj.Properties)
+                using (item)
                 {
-                    row[prop.Name] = prop.Value;
+                    var row = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+                    foreach (PropertyData property in item.Properties)
+                    {
+                        row[property.Name] = property.Value;
+                    }
+                    results.Add(row);
                 }
-                results.Add(row);
             }
         }
-        catch (Exception ex)
+        catch (Exception exception)
         {
-            host.Logger.Warn($"WMI query failed: {ex.Message}");
+            host.Logger.Warn($"WMI query failed: {exception}");
+            throw new InvalidOperationException($"La consulta WMI falló: {exception.Message}", exception);
         }
         return results;
     }
 
-    private static string? Get(Dictionary<string, object?> row, string name)
-    {
-        return row.TryGetValue(name, out var value) && value is not null ? value.ToString() : null;
-    }
+    private static string Get(Dictionary<string, object?> row, string name)
+        => row.TryGetValue(name, out var value) && value is not null ? value.ToString() ?? "n/a" : "n/a";
 }

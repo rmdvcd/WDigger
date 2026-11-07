@@ -1,123 +1,95 @@
-using System.IO;
-using Spectre.Console;
 using WDigger.Core;
+using WDigger.UI;
 
 namespace WDigger.Modules;
 
-/// <summary>
-/// Module for Acronis True Image (.tibx) backup listing and restore.
-/// </summary>
-public class BackupModule : IModule
+public sealed class BackupModule : IModule
 {
-    public string Name => "Backup (.tibx)";
-    public string Description => "Acronis True Image (.tibx) backup listing and restore.";
+    public string Name => "Copias de seguridad";
+    public string Description => "Localización, detalles y restauración de copias Acronis True Image (.tibx).";
 
-    public void Run(AppHost host)
+    public IReadOnlyList<ModuleAction> CreateActions(AppHost host) => new[]
     {
-        while (true)
-        {
-            var choice = AnsiConsole.Prompt(new SelectionPrompt<string>()
-                .Title("Backup module")
-                .AddChoices(
-                    "List .tibx backups in a folder",
-                    "Show backup details",
-                    "Restore from .tibx (Acronis)",
-                    "Back to main menu"));
+        new ModuleAction("Buscar copias .tibx", "Busca copias de seguridad de forma recursiva en una carpeta.",
+            (context, token) => ListTibxAsync(host, context, token)),
+        new ModuleAction("Ver detalles de una copia", "Muestra tamaño y fecha de modificación de un archivo .tibx.",
+            (context, token) => ShowDetailsAsync(host, context, token)),
+        new ModuleAction("Restaurar una copia .tibx", "Usa deploycmd de Acronis para restaurar en una unidad de destino.",
+            (context, token) => RestoreTibxAsync(host, context, token), changesSystem: true,
+            confirmation: "ADVERTENCIA: restaurar una copia puede sobrescribir todos los datos del disco de destino.")
+    };
 
-            switch (choice)
+    private static async Task ListTibxAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
+    {
+        _ = host;
+        var folder = context.PickFolder("Selecciona la carpeta donde buscar copias .tibx", @"C:\Backups");
+        if (folder is null) return;
+
+        context.SetStatus("Buscando archivos .tibx...");
+        var files = await Task.Run(() => Directory
+            .EnumerateFiles(folder, "*.tibx", SearchOption.AllDirectories)
+            .Select(path => new FileInfo(path))
+            .OrderByDescending(info => info.LastWriteTime)
+            .ToList(), token);
+        token.ThrowIfCancellationRequested();
+
+        if (files.Count == 0)
+        {
+            context.WriteLine("No se encontraron archivos .tibx.", OutputKind.Warning);
+            return;
+        }
+        context.ShowTable("Copias de seguridad .tibx", new[] { "Archivo", "Ubicación", "Tamaño", "Modificado" },
+            files.Select(info => new[]
             {
-                case "List .tibx backups in a folder":
-                    ListTibx(host);
-                    break;
-                case "Show backup details":
-                    ShowDetails(host);
-                    break;
-                case "Restore from .tibx (Acronis)":
-                    RestoreTibx(host);
-                    break;
-                case "Back to main menu":
-                    return;
-            }
-
-            AnsiConsole.WriteLine();
-            AnsiConsole.MarkupLine("[grey]Press any key to return...[/]");
-            Console.ReadKey(true);
-        }
-    }
-
-    private static void ListTibx(AppHost host)
-    {
-        var folder = AnsiConsole.Ask<string>("Folder to scan for .tibx files", @"C:\Backups");
-        if (string.IsNullOrWhiteSpace(folder)) return;
-        if (!Directory.Exists(folder))
-        {
-            AnsiConsole.MarkupLine("[yellow]Folder does not exist.[/]");
-            return;
-        }
-
-        var files = Directory.GetFiles(folder, "*.tibx", SearchOption.AllDirectories);
-        if (files.Length == 0)
-        {
-            AnsiConsole.MarkupLine("[yellow]No .tibx files found.[/]");
-            return;
-        }
-
-        var table = new Table("File", "Size", "Modified")
-        {
-            Border = TableBorder.Rounded
-        };
-        foreach (var file in files.OrderByDescending(f => File.GetLastWriteTime(f)))
-        {
-            var info = new FileInfo(file);
-            table.AddRow(
                 info.Name,
+                info.DirectoryName ?? string.Empty,
                 $"{info.Length / 1024.0 / 1024.0 / 1024.0:F2} GB",
                 info.LastWriteTime.ToString("yyyy-MM-dd HH:mm")
-            );
-        }
-        AnsiConsole.Write(table);
+            }));
     }
 
-    private static void ShowDetails(AppHost host)
+    private static Task ShowDetailsAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
     {
-        var file = AnsiConsole.Ask<string>("Path to .tibx file");
-        if (string.IsNullOrWhiteSpace(file) || !File.Exists(file)) return;
+        _ = host;
+        _ = token;
+        var file = context.PickFile("Seleccionar copia de seguridad", "Acronis True Image (*.tibx)|*.tibx");
+        if (file is null) return Task.CompletedTask;
         var info = new FileInfo(file);
-        AnsiConsole.MarkupLine($"[bold]{info.Name}[/]");
-        AnsiConsole.MarkupLine($"Size: {info.Length / 1024.0 / 1024.0 / 1024.0:F2} GB");
-        AnsiConsole.MarkupLine($"Modified: {info.LastWriteTime}");
-        AnsiConsole.MarkupLine("[grey]Full backup contents require Acronis True Image installed.[/]");
+        context.ShowTable("Detalles de la copia", new[] { "Propiedad", "Valor" }, new[]
+        {
+            new[] { "Archivo", info.FullName },
+            new[] { "Tamaño", $"{info.Length / 1024.0 / 1024.0 / 1024.0:F2} GB" },
+            new[] { "Modificado", info.LastWriteTime.ToString("yyyy-MM-dd HH:mm:ss") },
+            new[] { "Contenido", "La exploración del contenido requiere Acronis True Image." }
+        });
+        return Task.CompletedTask;
     }
 
-    private static void RestoreTibx(AppHost host)
+    private static async Task RestoreTibxAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
     {
-        AnsiConsole.MarkupLine("[red]Warning:[/] restoring a backup overwrites data on the target disk. Proceed with extreme care.");
-        var file = AnsiConsole.Ask<string>("Path to .tibx backup file");
-        if (string.IsNullOrWhiteSpace(file) || !File.Exists(file)) return;
-        var target = AnsiConsole.Ask<string>("Target drive letter (e.g. C)");
-        if (string.IsNullOrWhiteSpace(target)) return;
-        if (!Confirm(host)) return;
-
-        var acronis = @"C:\Program Files (x86)\Acronis\BackupAndRecovery\deploycmd.exe";
-        if (!File.Exists(acronis))
+        _ = host;
+        var file = context.PickFile("Seleccionar copia para restaurar", "Acronis True Image (*.tibx)|*.tibx");
+        if (file is null) return;
+        var target = context.Prompt("Restaurar copia", "Letra de la unidad de destino (por ejemplo, C):");
+        if (target is null) return;
+        target = target.TrimEnd(':').Trim();
+        if (target.Length != 1 || !char.IsLetter(target[0]))
         {
-            acronis = @"C:\Program Files\Acronis\BackupAndRecovery\deploycmd.exe";
+            context.WriteLine("La unidad de destino no es válida.", OutputKind.Warning);
+            return;
         }
 
-        if (File.Exists(acronis))
+        var acronis = new[]
         {
-            host.Commands.Run(acronis, $"restore --backup \"{file}\" --target {target}:");
-        }
-        else
+            @"C:\Program Files (x86)\Acronis\BackupAndRecovery\deploycmd.exe",
+            @"C:\Program Files\Acronis\BackupAndRecovery\deploycmd.exe"
+        }.FirstOrDefault(File.Exists);
+        if (acronis is null)
         {
-            AnsiConsole.MarkupLine("[yellow]Acronis command-line tool not found. Install Acronis True Image to enable restore.[/]");
-            host.Commands.Run("cmd", $"/c echo .tibx restore would target {target}: from {file}");
+            context.WriteLine("No se encontró deploycmd.exe. Instala Acronis Backup and Recovery para habilitar la restauración.",
+                OutputKind.Error);
+            return;
         }
-    }
-
-    private static bool Confirm(AppHost host)
-    {
-        AnsiConsole.MarkupLine(host.DryRun ? "[grey][DRY-RUN][/]" : "[red][LIVE - changes will be applied][/]");
-        return host.DryRun || AnsiConsole.Confirm("Apply this action on the real system?");
+        await context.RunCommandAsync(acronis, $"restore --backup \"{file}\" --target {target}:", token);
     }
 }

@@ -1,155 +1,87 @@
-using System.Globalization;
-using System.Linq;
-using System.Threading;
-using Spectre.Console;
 using WDigger.Core;
 using WDigger.Models;
-using WDigger.Services;
+using WDigger.UI;
 
 namespace WDigger.Modules;
 
-/// <summary>
-/// Phase 2 module: component inventory (WMI) and real-time sensor monitoring
-/// (LibreHardwareMonitorLib).
-/// </summary>
-public class HardwareModule : IModule
+public sealed class HardwareModule : IModule
 {
     public string Name => "Hardware";
-    public string Description => "Component inventory (WMI) and real-time sensor monitoring (LibreHardwareMonitor).";
+    public string Description => "Inventario WMI, sensores en tiempo real, estado de discos y batería.";
 
-    public void Run(AppHost host)
+    public IReadOnlyList<ModuleAction> CreateActions(AppHost host) => new[]
     {
+        new ModuleAction(
+            "Ver inventario de componentes",
+            "Windows, CPU, GPU, memoria, discos, placa base, batería y adaptadores de red.",
+            (context, token) => ShowInventoryAsync(host, context, token)),
+        new ModuleAction(
+            "Supervisar sensores en tiempo real",
+            "Actualiza temperaturas, cargas, ventiladores, voltajes y relojes cada dos segundos. Usa Cancelar para detener.",
+            (context, token) => ShowSensorsAsync(host, context, token)),
+        new ModuleAction(
+            "Estado de discos y batería",
+            "Consulta el estado físico de los discos y la carga de batería mediante WMI.",
+            (context, token) => ShowSmartAndBatteryAsync(host, context, token))
+    };
+
+    private static async Task ShowInventoryAsync(
+        AppHost host, ModuleExecutionContext context, CancellationToken token)
+    {
+        context.SetStatus("Consultando inventario WMI...");
+        var inventory = await Task.Run(() => host.Inventory.GetInventory(), token);
+        token.ThrowIfCancellationRequested();
+        context.ShowTable(
+            "Inventario de componentes",
+            new[] { "Componente", "Detalle", "Valor" },
+            inventory.Select(item => new[] { item.Category, item.Item, NotAvailable(item.Value) }));
+        context.WriteLine($"Inventario completado: {inventory.Count} elementos.", OutputKind.Success);
+    }
+
+    private static async Task ShowSensorsAsync(
+        AppHost host, ModuleExecutionContext context, CancellationToken token)
+    {
+        context.WriteLine("Monitor iniciado. Pulsa Cancelar para detener la actualización.", OutputKind.Muted);
+        context.ReportProgress();
         while (true)
         {
-            var choice = AnsiConsole.Prompt(new SelectionPrompt<string>()
-                .Title("Hardware module")
-                .AddChoices(
-                    "View component inventory (WMI)",
-                    "Real-time sensor monitor",
-                    "Disk status & battery health",
-                    "Back to main menu"));
+            token.ThrowIfCancellationRequested();
+            var readings = await Task.Run(() => host.Sensors.ReadAll(), token);
+            var visible = readings
+                .Where(reading => reading.Value is not null)
+                .OrderBy(reading => reading.HardwareType, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(reading => reading.Hardware, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(reading => reading.SensorName, StringComparer.OrdinalIgnoreCase)
+                .ToList();
 
-            switch (choice)
-            {
-                case "View component inventory (WMI)":
-                    ShowInventory(host);
-                    break;
-                case "Real-time sensor monitor":
-                    ShowSensorsLive(host);
-                    break;
-                case "Disk status & battery health":
-                    ShowSmartAndBattery(host);
-                    break;
-                case "Back to main menu":
-                    return;
-            }
-
-            AnsiConsole.WriteLine();
-            AnsiConsole.MarkupLine("[grey]Press any key to return...[/]");
-            Console.ReadKey(true);
+            context.ShowTable(
+                $"Sensores en tiempo real · {DateTime.Now:HH:mm:ss}",
+                new[] { "Hardware", "Sensor", "Tipo", "Valor", "Unidad" },
+                visible.Select(reading => new[]
+                {
+                    reading.Hardware,
+                    reading.SensorName,
+                    reading.SensorType,
+                    reading.Value ?? "n/a",
+                    reading.Unit
+                }));
+            context.SetStatus($"Sensores actualizados · {visible.Count} lecturas · Cancelar para detener");
+            await Task.Delay(TimeSpan.FromSeconds(2), token);
         }
     }
 
-    private static void ShowInventory(AppHost host)
+    private static async Task ShowSmartAndBatteryAsync(
+        AppHost host, ModuleExecutionContext context, CancellationToken token)
     {
-        var inventory = host.Inventory.GetInventory();
-        var table = new Table("Component", "Detail", "Value")
-        {
-            Border = TableBorder.Rounded
-        };
-        foreach (var item in inventory)
-        {
-            table.AddRow(item.Category, item.Item, string.IsNullOrEmpty(item.Value) ? "n/a" : item.Value);
-        }
-
-        AnsiConsole.Write(table);
+        context.SetStatus("Consultando discos y batería...");
+        var items = await Task.Run(() => host.Inventory.GetSmartAndBattery(), token);
+        token.ThrowIfCancellationRequested();
+        context.ShowTable(
+            "Estado de discos y batería",
+            new[] { "Componente", "Detalle", "Valor" },
+            items.Select(item => new[] { item.Category, item.Item, NotAvailable(item.Value) }));
+        context.WriteLine("Las temperaturas SMART detalladas están disponibles en el monitor de sensores.", OutputKind.Muted);
     }
 
-    private void ShowSensorsLive(AppHost host)
-    {
-        AnsiConsole.MarkupLine("[yellow]Note:[/] sensor access may require Administrator privileges. " +
-            "Values may appear as n/a without elevation.");
-        AnsiConsole.WriteLine();
-        AnsiConsole.MarkupLine("[grey]Press any key to stop monitoring.[/]\n");
-
-        using var live = AnsiConsole.Live(new Panel("Initializing LibreHardwareMonitor..."));
-        while (!Console.KeyAvailable)
-        {
-            var readings = host.Sensors.ReadAll();
-            live.Refresh(BuildSensorPanel(readings));
-            Thread.Sleep(1000);
-        }
-
-        if (Console.KeyAvailable)
-        {
-            _ = Console.ReadKey(true);
-        }
-    }
-
-    private static Panel BuildSensorPanel(IReadOnlyList<SensorReading> readings)
-    {
-        var table = new Table { Border = TableBorder.Rounded };
-        table.AddColumn("Hardware");
-        table.AddColumn("Sensor");
-        table.AddColumn("Type");
-        table.AddColumn("Value");
-        table.AddColumn("Unit");
-
-        var shown = readings
-            .Where(r => r.Value is not null)
-            .OrderBy(r => r.HardwareType, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(r => r.Hardware, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(r => r.SensorName, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        foreach (var r in shown)
-        {
-            table.AddRow(
-                r.Hardware,
-                r.SensorName,
-                r.SensorType,
-                new Text(r.Value ?? "n/a", StyleFor(r)),
-                r.Unit);
-        }
-
-        return new Panel(table)
-        {
-            Border = BoxBorder.Rounded,
-            Header = new PanelHeader($"Real-time sensors ({shown.Count} readings)")
-        };
-    }
-
-    private static Style StyleFor(SensorReading r)
-    {
-        if (!float.TryParse(r.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var value))
-        {
-            return Style.Plain;
-        }
-
-        return r.SensorType switch
-        {
-            "Temperature" => value > 85 ? Style.Parse("red") : value > 70 ? Style.Parse("yellow") : Style.Parse("green"),
-            "Load" => value > 90 ? Style.Parse("red") : value > 70 ? Style.Parse("yellow") : Style.Parse("green"),
-            "Fan" => value == 0 ? Style.Parse("red") : Style.Parse("cyan"),
-            "Clock" => Style.Parse("grey"),
-            "Voltage" => Math.Abs(value - 1.0f) > 0.1f ? Style.Parse("yellow") : Style.Parse("green"),
-            _ => Style.Plain
-        };
-    }
-
-    private void ShowSmartAndBattery(AppHost host)
-    {
-        var table = new Table("Component", "Detail", "Value")
-        {
-            Border = TableBorder.Rounded
-        };
-        foreach (var item in host.Inventory.GetSmartAndBattery())
-        {
-            table.AddRow(item.Category, item.Item, string.IsNullOrEmpty(item.Value) ? "n/a" : item.Value);
-        }
-
-        AnsiConsole.Write(table);
-        AnsiConsole.WriteLine();
-        AnsiConsole.Markup("[grey]SMART temperatures, health and per-disk sensor values are shown in the real-time sensor monitor above.[/]\n");
-    }
+    private static string NotAvailable(string? value) => string.IsNullOrWhiteSpace(value) ? "n/a" : value;
 }

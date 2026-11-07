@@ -1,13 +1,12 @@
 using System.Diagnostics;
 using System.Text;
-using Spectre.Console;
 using WDigger.Models;
 
 namespace WDigger.Core;
 
 /// <summary>
-/// Executes native Windows commands and PowerShell scripts, capturing stdout
-/// and stderr, logging everything to the audit log, and honoring dry-run mode.
+/// Executes native commands without a console window, streams their output to
+/// the native shell, writes the audit log and honors dry-run/cancellation.
 /// </summary>
 public sealed class CommandExecutor
 {
@@ -22,29 +21,30 @@ public sealed class CommandExecutor
 
     public bool DryRun => _isDryRun();
 
-    /// <summary>
-    /// Runs a native command (e.g. sfc, dism, netsh, winget, pnputil, reg).
-    /// When <paramref name="onOutputLine"/> is provided, each line of stdout is
-    /// reported as it is produced (useful for live progress rendering); stdout
-    /// is still buffered and returned in <see cref="CommandResult.StandardOutput"/>.
-    /// </summary>
-    public CommandResult Run(string fileName, string arguments = "", bool echoOutput = true,
-        Action<string>? onOutputLine = null, CancellationToken cancellationToken = default)
+    public CommandResult Run(
+        string fileName,
+        string arguments = "",
+        bool echoOutput = true,
+        Action<string>? onOutputLine = null,
+        CancellationToken cancellationToken = default)
     {
         return RunAsync(fileName, arguments, echoOutput, onOutputLine, cancellationToken)
             .GetAwaiter().GetResult();
     }
 
-    private async Task<CommandResult> RunAsync(string fileName, string arguments, bool echoOutput,
-        Action<string>? onOutputLine, CancellationToken cancellationToken)
+    public async Task<CommandResult> RunAsync(
+        string fileName,
+        string arguments = "",
+        bool echoOutput = true,
+        Action<string>? onOutputLine = null,
+        CancellationToken cancellationToken = default)
     {
-        var commandLine = string.IsNullOrWhiteSpace(arguments)
-            ? fileName
-            : $"{fileName} {arguments}";
+        var commandLine = string.IsNullOrWhiteSpace(arguments) ? fileName : $"{fileName} {arguments}";
 
         if (_isDryRun())
         {
             _logger.Warn($"[DRY-RUN] Would execute: {commandLine}");
+            onOutputLine?.Invoke($"[SIMULACIÓN] {commandLine}");
             return new CommandResult
             {
                 Command = commandLine,
@@ -56,10 +56,12 @@ public sealed class CommandExecutor
         }
 
         _logger.Info($"Executing: {commandLine}");
-        var sw = Stopwatch.StartNew();
-        string standardOutput = string.Empty;
-        string standardError = string.Empty;
-        int exitCode = -1;
+        var stopwatch = Stopwatch.StartNew();
+        var standardOutput = string.Empty;
+        var standardError = string.Empty;
+        var exitCode = -1;
+        Process? process = null;
+        Task<string>? readError = null;
 
         try
         {
@@ -75,12 +77,14 @@ public sealed class CommandExecutor
                 StandardErrorEncoding = Encoding.UTF8
             };
 
-            using var process = Process.Start(startInfo)!;
+            process = new Process { StartInfo = startInfo };
+            if (!process.Start())
+            {
+                throw new InvalidOperationException($"No se pudo iniciar '{fileName}'.");
+            }
 
-            // Drain stderr concurrently so a large error stream cannot deadlock
-            // the process while we read stdout line by line below.
-            var readError = process.StandardError.ReadToEndAsync(cancellationToken);
-
+            // Drain stderr concurrently to avoid blocking on a full pipe.
+            readError = process.StandardError.ReadToEndAsync(CancellationToken.None);
             var stdoutLines = new List<string>();
             string? line;
             while ((line = await process.StandardOutput.ReadLineAsync(cancellationToken)) is not null)
@@ -96,101 +100,65 @@ public sealed class CommandExecutor
         }
         catch (OperationCanceledException)
         {
+            TryKill(process);
+            if (process is not null)
+            {
+                try { await process.WaitForExitAsync(CancellationToken.None); } catch { /* Best effort. */ }
+            }
+            if (readError is not null)
+            {
+                try { await readError; } catch { /* Best effort. */ }
+            }
             _logger.Warn($"Command cancelled by user: {commandLine}");
             throw;
         }
-        catch (Exception ex)
+        catch (Exception exception)
         {
-            sw.Stop();
-            _logger.Error($"Failed to execute '{commandLine}': {ex.Message}");
+            TryKill(process);
+            stopwatch.Stop();
+            _logger.Error($"Failed to execute '{commandLine}': {exception}");
             return new CommandResult
             {
                 Command = commandLine,
                 ExitCode = -1,
-                StandardError = ex.Message,
-                Duration = sw.Elapsed
+                StandardError = exception.Message,
+                Duration = stopwatch.Elapsed
             };
         }
+        finally
+        {
+            process?.Dispose();
+        }
 
-        sw.Stop();
+        stopwatch.Stop();
         var result = new CommandResult
         {
             Command = commandLine,
             ExitCode = exitCode,
             StandardOutput = standardOutput,
             StandardError = standardError,
-            Duration = sw.Elapsed
+            Duration = stopwatch.Elapsed
         };
 
         _logger.LogCommand(result);
-
-        // Only render the full output panel when we are not streaming lines to a
-        // progress UI (otherwise we'd print twice and break the progress view).
-        if (echoOutput && onOutputLine == null)
-        {
-            RenderResult(result);
-        }
-
         return result;
     }
 
-    private static void RenderResult(CommandResult result)
+    private static void TryKill(Process? process)
     {
-        var output = Truncate(result.StandardOutput, 250);
-        if (!string.IsNullOrEmpty(output))
+        try
         {
-            var borderStyle = result.Success ? Color.Green : Color.Red;
-            AnsiConsole.Write(new Panel(new Text(output))
+            if (process is not null && !process.HasExited)
             {
-                Border = BoxBorder.Rounded,
-                BorderStyle = borderStyle,
-                Header = new PanelHeader($"Standard output (exit code {result.ExitCode})")
-            });
+                process.Kill(entireProcessTree: true);
+            }
         }
-
-        if (!string.IsNullOrEmpty(result.StandardError))
+        catch
         {
-            AnsiConsole.Write(new Panel(new Text(result.StandardError))
-            {
-                Border = BoxBorder.Rounded,
-                BorderStyle = Color.Red,
-                Header = new PanelHeader("Standard error")
-            });
+            // The process may have exited between the check and Kill.
         }
-
-        AnsiConsole.WriteLine();
-        AnsiConsole.MarkupLine($"[grey]Finished in {result.Duration.TotalSeconds:F2} seconds.[/]");
     }
 
-    /// <summary>
-    /// Keeps very long command output (DISM/SFC logs) from flooding the terminal.
-    /// </summary>
-    private static string Truncate(string? output, int maxLines = 250)
-    {
-        if (string.IsNullOrEmpty(output))
-        {
-            return output ?? string.Empty;
-        }
-
-        var lines = output.Split('\n');
-        if (lines.Length <= maxLines)
-        {
-            return output;
-        }
-
-        var sb = new StringBuilder();
-        sb.AppendLine($"... output truncated: {lines.Length - maxLines} lines omitted, showing the last {maxLines} lines ...");
-        for (var i = lines.Length - maxLines; i < lines.Length; i++)
-        {
-            sb.AppendLine(lines[i]);
-        }
-
-        return sb.ToString();
-    }
-
-    /// <summary>
-    /// Shortens a single line for display in a live progress description.
-    /// </summary>
     public static string Shorten(string? text, int maxLength = 70)
     {
         if (string.IsNullOrEmpty(text))
@@ -198,8 +166,6 @@ public sealed class CommandExecutor
             return text ?? string.Empty;
         }
 
-        return text.Length <= maxLength
-            ? text
-            : text.Substring(0, maxLength - 3) + "...";
+        return text.Length <= maxLength ? text : text[..(maxLength - 3)] + "...";
     }
 }

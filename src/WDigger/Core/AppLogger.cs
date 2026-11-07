@@ -6,8 +6,8 @@ namespace WDigger.Core;
 /// <summary>
 /// Detailed timestamped audit logger. Every action, command and its full
 /// stdout/stderr is written to a log file named with the session timestamp.
-/// Nothing is written to the console directly, so Spectre.Console keeps full
-/// control of the terminal rendering.
+/// Nothing is written to a console; the native Windows shell remains responsive
+/// and displays command output through its own activity view.
 /// </summary>
 public sealed class AppLogger : IDisposable
 {
