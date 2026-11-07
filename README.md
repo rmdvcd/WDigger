@@ -16,7 +16,7 @@ Written in **C# on .NET 8** with **Spectre.Console** for the TUI.
 | Layer | Technology |
 |---|---|
 | Language / runtime | C# 12, .NET 8 (Windows) |
-| TUI | Spectre.Console (tables, menus, panels, progress, live views) |
+| TUI | Spectre.Console (tables, menus, panels, progress bars, live views) |
 | Hardware sensors | LibreHardwareMonitorLib (NuGet) |
 | Inventory / SMART / battery | System.Management (WMI) |
 | Command orchestration | DISM, SFC, CHKDSK, netsh, PowerShell, Winget, pnputil |
@@ -99,6 +99,9 @@ dotnet publish -c Release -r win-x64 --self-contained false
   **Settings > Enable/Disable dry-run mode**. In dry-run mode every action that
   would modify the system is only simulated: the exact command line (or
   registry change) is shown and logged, but never executed.
+* Long-running repair operations (SFC, DISM, CHKDSK) render inside a live
+  Spectre.Console progress bar so the terminal does not appear frozen, and each
+  result is translated into a plain-language explanation after completion.
 * Before applying any reversible tweak or major repair, WDigger attempts to
   create a **System Restore Point** via WMI (`SystemRestore.CreateRestorePoint`).
   Failure is reported but non-fatal — the operator decides whether to continue.
@@ -123,7 +126,7 @@ example.
 |---|---|---|
 | 1 – Skeleton & UI | Done | .NET 8 project, Spectre.Console TUI, main menu, module navigation, settings, dry-run toggle |
 | 2 – Hardware | Done | WMI inventory (OS, CPU, GPU, RAM, disks, motherboard, battery, network); real-time sensor monitor via LibreHardwareMonitor with live refreshing panel |
-| 3 – Repair | Skeleton (functional) | SFC /scannow, DISM RestoreHealth, CHKDSK /scan /perf, Windows Update component reset, Winget cache reset — all through CommandExecutor with logging |
+| 3 – Repair | Done (functional) | SFC /scannow, DISM RestoreHealth, CHKDSK /scan /perf, Windows Update component reset, Winget cache reset — all through CommandExecutor with logging, live progress bars for long operations and plain-language result explanations |
 | 4 – Software & Tweaks | Skeleton (functional) | Winget list/search/install, Appx removal, JSON-driven tweaks with registry/command actions, restore point before apply |
 | 5 – Advanced | Skeleton (functional) | Driver backup (Export-WindowsDriver), pnputil enum/add-driver, network reset/DNS/IP, disk space, CHKDSK, temp cleanup |
 | 6 – Refinement | Planned | Progress bars for long operations, polished UX, more rollback implementations |

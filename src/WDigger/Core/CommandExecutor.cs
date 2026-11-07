@@ -24,13 +24,19 @@ public sealed class CommandExecutor
 
     /// <summary>
     /// Runs a native command (e.g. sfc, dism, netsh, winget, pnputil, reg).
+    /// When <paramref name="onOutputLine"/> is provided, each line of stdout is
+    /// reported as it is produced (useful for live progress rendering); stdout
+    /// is still buffered and returned in <see cref="CommandResult.StandardOutput"/>.
     /// </summary>
-    public CommandResult Run(string fileName, string arguments = "", bool echoOutput = true, CancellationToken cancellationToken = default)
+    public CommandResult Run(string fileName, string arguments = "", bool echoOutput = true,
+        Action<string>? onOutputLine = null, CancellationToken cancellationToken = default)
     {
-        return RunAsync(fileName, arguments, echoOutput, cancellationToken).GetAwaiter().GetResult();
+        return RunAsync(fileName, arguments, echoOutput, onOutputLine, cancellationToken)
+            .GetAwaiter().GetResult();
     }
 
-    private async Task<CommandResult> RunAsync(string fileName, string arguments, bool echoOutput, CancellationToken cancellationToken)
+    private async Task<CommandResult> RunAsync(string fileName, string arguments, bool echoOutput,
+        Action<string>? onOutputLine, CancellationToken cancellationToken)
     {
         var commandLine = string.IsNullOrWhiteSpace(arguments)
             ? fileName
@@ -71,14 +77,21 @@ public sealed class CommandExecutor
 
             using var process = Process.Start(startInfo)!;
 
-            // Read both streams concurrently so a large output cannot deadlock
-            // the process, then wait for it to exit.
-            var readOutput = process.StandardOutput.ReadToEndAsync(cancellationToken);
+            // Drain stderr concurrently so a large error stream cannot deadlock
+            // the process while we read stdout line by line below.
             var readError = process.StandardError.ReadToEndAsync(cancellationToken);
 
+            var stdoutLines = new List<string>();
+            string? line;
+            while ((line = await process.StandardOutput.ReadLineAsync(cancellationToken)) is not null)
+            {
+                stdoutLines.Add(line);
+                onOutputLine?.Invoke(line);
+            }
+
             await process.WaitForExitAsync(cancellationToken);
-            standardOutput = await readOutput;
             standardError = await readError;
+            standardOutput = string.Join(Environment.NewLine, stdoutLines);
             exitCode = process.ExitCode;
         }
         catch (OperationCanceledException)
@@ -111,7 +124,9 @@ public sealed class CommandExecutor
 
         _logger.LogCommand(result);
 
-        if (echoOutput)
+        // Only render the full output panel when we are not streaming lines to a
+        // progress UI (otherwise we'd print twice and break the progress view).
+        if (echoOutput && onOutputLine == null)
         {
             RenderResult(result);
         }
@@ -171,5 +186,20 @@ public sealed class CommandExecutor
         }
 
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Shortens a single line for display in a live progress description.
+    /// </summary>
+    public static string Shorten(string? text, int maxLength = 70)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return text ?? string.Empty;
+        }
+
+        return text.Length <= maxLength
+            ? text
+            : text.Substring(0, maxLength - 3) + "...";
     }
 }
