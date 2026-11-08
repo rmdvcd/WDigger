@@ -43,11 +43,11 @@ public sealed class NetworkModule : IModule
     {
         _ = host;
         await context.RunCommandAsync("netsh", "interface ip show dns", token);
-        var adapter = context.Prompt("Configurar DNS", "Nombre exacto del adaptador (por ejemplo, Ethernet o Wi-Fi):");
+        var adapter = await context.PromptAsync("Configurar DNS", "Nombre exacto del adaptador (por ejemplo, Ethernet o Wi-Fi):");
         if (adapter is null) return;
-        var primary = context.Prompt("Configurar DNS", "Servidor DNS principal (por ejemplo, 1.1.1.1):");
+        var primary = await context.PromptAsync("Configurar DNS", "Servidor DNS principal (por ejemplo, 1.1.1.1):");
         if (primary is null) return;
-        var secondary = context.Prompt("Configurar DNS", "Servidor DNS secundario (opcional):", allowEmpty: true);
+        var secondary = await context.PromptAsync("Configurar DNS", "Servidor DNS secundario (opcional):", allowEmpty: true);
         if (secondary is null) return;
 
         await context.RunCommandAsync("netsh",

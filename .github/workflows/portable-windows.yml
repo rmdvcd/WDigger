@@ -23,8 +23,42 @@ jobs:
       - name: Restore
         run: dotnet restore "src\WDigger\WDigger.csproj"
 
+      - name: Build
+        id: build
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          dotnet build "src\WDigger\WDigger.csproj" -c Release --no-restore -v:m 2>&1 | Tee-Object -FilePath build.log
+          "exitcode=$LASTEXITCODE" >> $env:GITHUB_OUTPUT
+
+      - name: Annotate build errors
+        if: steps.build.outputs.exitcode != '0'
+        shell: pwsh
+        run: |
+          $pattern = '(?i)(error|exception|failed)\b'
+          $lines = @(Get-Content build.log | Where-Object { $_ -match $pattern } | Select-Object -First 60)
+          if ($lines.Count -eq 0) { $lines = @(Get-Content build.log | Select-Object -Last 60) }
+          foreach ($l in $lines) { Write-Output ("::error::" + ($l -replace "`r", "" -replace "`n", " ")) }
+          exit 1
+
       - name: Publish native portable EXE
-        run: dotnet publish "src\WDigger\WDigger.csproj" -c Release -p:PublishProfile=Portable-win-x64 --no-restore
+        if: steps.build.outputs.exitcode == '0'
+        id: publish
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          dotnet publish "src\WDigger\WDigger.csproj" -c Release -p:PublishProfile=Portable-win-x64 --no-restore 2>&1 | Tee-Object -FilePath publish.log
+          "exitcode=$LASTEXITCODE" >> $env:GITHUB_OUTPUT
+
+      - name: Annotate publish errors
+        if: steps.publish.outcome == 'success' && steps.publish.outputs.exitcode != '0'
+        shell: pwsh
+        run: |
+          $pattern = '(?i)(error|exception|failed)\b'
+          $lines = @(Get-Content publish.log | Where-Object { $_ -match $pattern } | Select-Object -First 60)
+          if ($lines.Count -eq 0) { $lines = @(Get-Content publish.log | Select-Object -Last 60) }
+          foreach ($l in $lines) { Write-Output ("::error::" + ($l -replace "`r", "" -replace "`n", " ")) }
+          exit 1
 
       - name: Verify single-file output
         shell: pwsh

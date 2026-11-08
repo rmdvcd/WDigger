@@ -2,7 +2,7 @@
 setlocal
 cd /d "%~dp0"
 
-echo Publicando WDigger portable para Windows x64...
+echo Publicando WDigger (WinUI 3) portable para Windows x64...
 dotnet publish "src\WDigger\WDigger.csproj" -c Release -p:PublishProfile=Portable-win-x64
 if errorlevel 1 (
     echo.

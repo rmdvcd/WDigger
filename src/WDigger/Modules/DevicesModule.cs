@@ -39,9 +39,9 @@ public sealed class DevicesModule : IModule
     private static async Task AddNetworkPrinterAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
     {
         _ = host;
-        var ip = context.Prompt("Agregar impresora de red", "Dirección IP o nombre de host:");
+        var ip = await context.PromptAsync("Agregar impresora de red", "Dirección IP o nombre de host:");
         if (ip is null) return;
-        var name = context.Prompt("Agregar impresora de red", "Nombre para mostrar:", ip);
+        var name = await context.PromptAsync("Agregar impresora de red", "Nombre para mostrar:", ip);
         if (name is null) return;
         await context.RunCommandAsync("rundll32.exe",
             $"printui.dll,PrintUIEntry /if /b \"{name}\" /r \"IP_{ip}\" /m \"Generic Printer\" /z", token);
@@ -50,7 +50,7 @@ public sealed class DevicesModule : IModule
     private static async Task RemovePrinterAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
     {
         _ = host;
-        var name = context.Prompt("Quitar impresora", "Nombre exacto de la impresora:");
+        var name = await context.PromptAsync("Quitar impresora", "Nombre exacto de la impresora:");
         if (name is null) return;
         await context.RunCommandAsync("rundll32.exe", $"printui.dll,PrintUIEntry /dl /n \"{name}\"", token);
     }
@@ -72,9 +72,9 @@ public sealed class DevicesModule : IModule
     private static async Task EnableDisableDeviceAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
     {
         _ = host;
-        var instanceId = context.Prompt("Habilitar o deshabilitar", "ID de instancia (PNPDeviceID):");
+        var instanceId = await context.PromptAsync("Habilitar o deshabilitar", "ID de instancia (PNPDeviceID):");
         if (instanceId is null) return;
-        var choice = context.Choose("Acción del dispositivo", "Selecciona la acción:",
+        var choice = await context.ChooseAsync("Acción del dispositivo", "Selecciona la acción:",
             new[] { "Habilitar", "Deshabilitar" }, item => item);
         if (choice is null) return;
 

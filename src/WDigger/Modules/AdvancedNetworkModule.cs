@@ -32,13 +32,13 @@ public sealed class AdvancedNetworkModule : IModule
     private static async Task SetStaticIpAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
     {
         _ = host;
-        var adapter = context.Prompt("IP estática", "Nombre exacto del adaptador:");
+        var adapter = await context.PromptAsync("IP estática", "Nombre exacto del adaptador:");
         if (adapter is null) return;
-        var ip = context.Prompt("IP estática", "Dirección IP (por ejemplo, 192.168.1.50):");
+        var ip = await context.PromptAsync("IP estática", "Dirección IP (por ejemplo, 192.168.1.50):");
         if (ip is null) return;
-        var mask = context.Prompt("IP estática", "Máscara de subred:", "255.255.255.0");
+        var mask = await context.PromptAsync("IP estática", "Máscara de subred:", "255.255.255.0");
         if (mask is null) return;
-        var gateway = context.Prompt("IP estática", "Puerta de enlace predeterminada:");
+        var gateway = await context.PromptAsync("IP estática", "Puerta de enlace predeterminada:");
         if (gateway is null) return;
 
         await context.RunCommandAsync("netsh",
@@ -48,7 +48,7 @@ public sealed class AdvancedNetworkModule : IModule
     private static async Task SetDhcpAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
     {
         _ = host;
-        var adapter = context.Prompt("Configurar DHCP", "Nombre exacto del adaptador:");
+        var adapter = await context.PromptAsync("Configurar DHCP", "Nombre exacto del adaptador:");
         if (adapter is null) return;
         await context.RunCommandAsync("netsh", $"interface ip set address name=\"{adapter}\" dhcp", token);
         await context.RunCommandAsync("netsh", $"interface ip set dns name=\"{adapter}\" dhcp", token);
@@ -57,7 +57,7 @@ public sealed class AdvancedNetworkModule : IModule
     private static async Task TraceRouteAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
     {
         _ = host;
-        var target = context.Prompt("Trazar ruta", "Nombre de host o dirección IP:");
+        var target = await context.PromptAsync("Trazar ruta", "Nombre de host o dirección IP:");
         if (target is not null)
         {
             await context.RunCommandAsync("tracert", target, token);
@@ -67,7 +67,7 @@ public sealed class AdvancedNetworkModule : IModule
     private static async Task ConfigureProxyAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
     {
         _ = host;
-        var proxy = context.Prompt("Proxy WinHTTP",
+        var proxy = await context.PromptAsync("Proxy WinHTTP",
             "Servidor (por ejemplo, proxy.empresa.com:8080). Déjalo vacío para restablecer:", allowEmpty: true);
         if (proxy is null) return;
         await context.RunCommandAsync("netsh", string.IsNullOrWhiteSpace(proxy)
@@ -78,7 +78,7 @@ public sealed class AdvancedNetworkModule : IModule
     private static async Task RenameComputerAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
     {
         _ = host;
-        var newName = context.Prompt("Cambiar nombre del equipo", "Nuevo nombre:");
+        var newName = await context.PromptAsync("Cambiar nombre del equipo", "Nuevo nombre:");
         if (newName is null) return;
         var escaped = newName.Replace("'", "''");
         await context.RunCommandAsync("powershell",

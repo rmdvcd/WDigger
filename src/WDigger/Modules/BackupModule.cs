@@ -22,7 +22,7 @@ public sealed class BackupModule : IModule
     private static async Task ListTibxAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
     {
         _ = host;
-        var folder = context.PickFolder("Selecciona la carpeta donde buscar copias .tibx", @"C:\Backups");
+        var folder = await context.PickFolderAsync("Selecciona la carpeta donde buscar copias .tibx", @"C:\Backups");
         if (folder is null) return;
 
         context.SetStatus("Buscando archivos .tibx...");
@@ -48,12 +48,12 @@ public sealed class BackupModule : IModule
             }));
     }
 
-    private static Task ShowDetailsAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
+    private static async Task ShowDetailsAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
     {
         _ = host;
         _ = token;
-        var file = context.PickFile("Seleccionar copia de seguridad", "Acronis True Image (*.tibx)|*.tibx");
-        if (file is null) return Task.CompletedTask;
+        var file = await context.PickFileAsync("Seleccionar copia de seguridad", "Acronis True Image (*.tibx)|*.tibx");
+        if (file is null) return;
         var info = new FileInfo(file);
         context.ShowTable("Detalles de la copia", new[] { "Propiedad", "Valor" }, new[]
         {
@@ -62,15 +62,14 @@ public sealed class BackupModule : IModule
             new[] { "Modificado", info.LastWriteTime.ToString("yyyy-MM-dd HH:mm:ss") },
             new[] { "Contenido", "La exploración del contenido requiere Acronis True Image." }
         });
-        return Task.CompletedTask;
     }
 
     private static async Task RestoreTibxAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
     {
         _ = host;
-        var file = context.PickFile("Seleccionar copia para restaurar", "Acronis True Image (*.tibx)|*.tibx");
+        var file = await context.PickFileAsync("Seleccionar copia para restaurar", "Acronis True Image (*.tibx)|*.tibx");
         if (file is null) return;
-        var target = context.Prompt("Restaurar copia", "Letra de la unidad de destino (por ejemplo, C):");
+        var target = await context.PromptAsync("Restaurar copia", "Letra de la unidad de destino (por ejemplo, C):");
         if (target is null) return;
         target = target.TrimEnd(':').Trim();
         if (target.Length != 1 || !char.IsLetter(target[0]))

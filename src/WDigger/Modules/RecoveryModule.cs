@@ -24,9 +24,9 @@ public sealed class RecoveryModule : IModule
     private static async Task RecoverFilesAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
     {
         _ = host;
-        var source = context.Prompt("Recuperar archivos", "Unidad de origen (por ejemplo, C:):");
+        var source = await context.PromptAsync("Recuperar archivos", "Unidad de origen (por ejemplo, C:):");
         if (source is null) return;
-        var destination = context.Prompt("Recuperar archivos", "Unidad de destino, distinta del origen (por ejemplo, D:):");
+        var destination = await context.PromptAsync("Recuperar archivos", "Unidad de destino, distinta del origen (por ejemplo, D:):");
         if (destination is null) return;
         if (NormalizeDrive(source).Equals(NormalizeDrive(destination), StringComparison.OrdinalIgnoreCase))
         {
@@ -34,10 +34,10 @@ public sealed class RecoveryModule : IModule
             return;
         }
 
-        var mode = context.Choose("Modo de recuperación", "Selecciona el modo:",
+        var mode = await context.ChooseAsync("Modo de recuperación", "Selecciona el modo:",
             new[] { "Default", "Segment", "Signature" }, item => item);
         if (mode is null) return;
-        var filter = context.Prompt("Recuperar archivos",
+        var filter = await context.PromptAsync("Recuperar archivos",
             "Filtro opcional (por ejemplo, *.pdf o *.jpg):", allowEmpty: true);
         if (filter is null) return;
 

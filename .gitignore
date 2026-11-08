@@ -1,4 +1,4 @@
-## WDigger - Windows diagnostics TUI (C# / .NET 8)
+## WDigger - Windows diagnostics (WinUI 3 · C# · .NET 8)
 
 # User-specific files
 *.suo
@@ -41,3 +41,6 @@ drivers-backup/
 
 # Crash dumps
 WDigger.crash.log
+
+# Preferencias de UI generadas en ejecución (dev local)
+config/ui-settings.json

@@ -40,7 +40,7 @@ public sealed class DiskModule : IModule
     private static async Task ScanDriveAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
     {
         _ = host;
-        var input = context.Prompt("Analizar unidad", "Letra de unidad:", "C");
+        var input = await context.PromptAsync("Analizar unidad", "Letra de unidad:", "C");
         if (input is null) return;
         var drive = input.TrimEnd(':').Trim();
         if (drive.Length != 1 || !char.IsLetter(drive[0]))

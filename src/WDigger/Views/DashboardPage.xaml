@@ -1,0 +1,203 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="WDigger.Views.DashboardPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <ScrollViewer HorizontalScrollMode="Disabled">
+        <StackPanel Padding="28,22,28,18" Spacing="16" MaxWidth="1120" HorizontalAlignment="Left">
+
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Spacing="2">
+                    <TextBlock Text="Panel de control" FontSize="28" FontWeight="SemiBold" />
+                    <TextBlock Text="Resumen del sistema, acciones rápidas y datos portables de WDigger."
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                </StackPanel>
+                <Button x:Name="RefreshButton" Grid.Column="1" VerticalAlignment="Center"
+                        Click="RefreshButton_Click" ToolTipService.ToolTip="Actualizar inventario">
+                    <FontIcon Glyph="&#xE72C;" FontSize="16" />
+                </Button>
+            </Grid>
+
+            <InfoBar x:Name="DryRunBanner" IsOpen="False" Severity="Warning"
+                     Title="Modo simulación activo"
+                     Message="Las acciones que modifican el sistema se registrarán en el registro, pero no se ejecutarán." />
+
+            <!-- Stat cards -->
+            <Grid ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <Border Grid.Column="0" Padding="16" CornerRadius="10"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                    <StackPanel Spacing="8">
+                        <Border Width="38" Height="38" CornerRadius="9" Background="{ThemeResource AppAccentSoftBrush}">
+                            <FontIcon Glyph="&#xE7F8;" FontSize="16" Foreground="{ThemeResource AppAccentBrush}"
+                                      HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <TextBlock Text="SISTEMA" FontSize="10" FontWeight="SemiBold" CharacterSpacing="100"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <TextBlock x:Name="OsValue" Text="Consultando..." FontSize="14" FontWeight="SemiBold"
+                                   TextWrapping="Wrap" MaxLines="2" />
+                        <TextBlock x:Name="OsSub" Text="" FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+                </Border>
+
+                <Border Grid.Column="1" Padding="16" CornerRadius="10"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                    <StackPanel Spacing="8">
+                        <Border Width="38" Height="38" CornerRadius="9" Background="{ThemeResource AppAccentSoftBrush}">
+                            <FontIcon Glyph="&#xE950;" FontSize="16" Foreground="{ThemeResource AppAccentBrush}"
+                                      HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <TextBlock Text="CPU" FontSize="10" FontWeight="SemiBold" CharacterSpacing="100"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <TextBlock x:Name="CpuValue" Text="Consultando..." FontSize="14" FontWeight="SemiBold"
+                                   TextWrapping="Wrap" MaxLines="2" />
+                        <TextBlock x:Name="CpuSub" Text="" FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+                </Border>
+
+                <Border Grid.Column="2" Padding="16" CornerRadius="10"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                    <StackPanel Spacing="8">
+                        <Border Width="38" Height="38" CornerRadius="9" Background="{ThemeResource AppAccentSoftBrush}">
+                            <FontIcon Glyph="&#xE71D;" FontSize="16" Foreground="{ThemeResource AppAccentBrush}"
+                                      HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <TextBlock Text="MEMORIA" FontSize="10" FontWeight="SemiBold" CharacterSpacing="100"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <TextBlock x:Name="MemoryValue" Text="Consultando..." FontSize="14" FontWeight="SemiBold"
+                                   TextWrapping="Wrap" MaxLines="2" />
+                        <TextBlock x:Name="MemorySub" Text="" FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+                </Border>
+
+                <Border Grid.Column="3" Padding="16" CornerRadius="10"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                    <StackPanel Spacing="8">
+                        <Border Width="38" Height="38" CornerRadius="9" Background="{ThemeResource AppAccentSoftBrush}">
+                            <FontIcon Glyph="&#xE76C;" FontSize="16" Foreground="{ThemeResource AppAccentBrush}"
+                                      HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <TextBlock Text="DISCO C:" FontSize="10" FontWeight="SemiBold" CharacterSpacing="100"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <TextBlock x:Name="DiskValue" Text="Consultando..." FontSize="14" FontWeight="SemiBold"
+                                   TextWrapping="Wrap" MaxLines="2" />
+                        <ProgressBar x:Name="DiskUsedBar" Minimum="0" Maximum="100" Value="0" Height="4" Margin="0,4,0,0" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <!-- Quick actions -->
+            <TextBlock Text="Acciones rápidas" FontSize="15" FontWeight="SemiBold" Margin="0,4,0,0" />
+            <Grid ColumnSpacing="12" RowSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Button Grid.Column="0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="14,10"
+                        Click="QuickRepair_Click">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <FontIcon Glyph="&#xE90F;" FontSize="16" Foreground="{ThemeResource AppAccentBrush}" VerticalAlignment="Center" />
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="Reparar sistema" FontWeight="SemiBold" FontSize="12" />
+                            <TextBlock Text="SFC · DISM · CHKDSK" FontSize="10" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
+                    </StackPanel>
+                </Button>
+                <Button Grid.Column="1" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="14,10"
+                        Click="QuickSensors_Click">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <FontIcon Glyph="&#xE9D9;" FontSize="16" Foreground="{ThemeResource AppAccentBrush}" VerticalAlignment="Center" />
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="Sensores en vivo" FontWeight="SemiBold" FontSize="12" />
+                            <TextBlock Text="Temperatura y carga" FontSize="10" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
+                    </StackPanel>
+                </Button>
+                <Button Grid.Column="2" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="14,10"
+                        Click="QuickSoftware_Click">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <FontIcon Glyph="&#xE896;" FontSize="16" Foreground="{ThemeResource AppAccentBrush}" VerticalAlignment="Center" />
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="Instalar paquetes" FontWeight="SemiBold" FontSize="12" />
+                            <TextBlock Text="Winget · Chocolatey" FontSize="10" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
+                    </StackPanel>
+                </Button>
+                <Button Grid.Column="3" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="14,10"
+                        Click="QuickDisk_Click">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <FontIcon Glyph="&#xE74D;" FontSize="16" Foreground="{ThemeResource AppAccentBrush}" VerticalAlignment="Center" />
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="Limpiar temporales" FontWeight="SemiBold" FontSize="12" />
+                            <TextBlock Text="%TEMP% y CHKDSK" FontSize="10" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
+                    </StackPanel>
+                </Button>
+            </Grid>
+
+            <!-- Data locations -->
+            <TextBlock Text="Datos y registro" FontSize="15" FontWeight="SemiBold" Margin="0,4,0,0" />
+            <Border Padding="18" CornerRadius="10"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                <StackPanel Spacing="10">
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="CARPETA DE DATOS" FontSize="10" FontWeight="SemiBold" CharacterSpacing="100"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <TextBlock x:Name="DataFolderText" Text="" IsTextSelectionEnabled="True" FontSize="12" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="REGISTRO DE AUDITORÍA" FontSize="10" FontWeight="SemiBold" CharacterSpacing="100"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <TextBlock x:Name="LogFolderText" Text="" IsTextSelectionEnabled="True" FontSize="12" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="CONFIGURACIÓN" FontSize="10" FontWeight="SemiBold" CharacterSpacing="100"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <TextBlock x:Name="ConfigFolderText" Text="" IsTextSelectionEnabled="True" FontSize="12" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
+                        <Button Click="OpenDataFolder_Click">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <FontIcon Glyph="&#xE8B7;" FontSize="14" />
+                                <TextBlock Text="Abrir carpeta de datos" />
+                            </StackPanel>
+                        </Button>
+                        <Button Click="OpenLogsFolder_Click">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <FontIcon Glyph="&#xE8A5;" FontSize="14" />
+                                <TextBlock Text="Abrir registro" />
+                            </StackPanel>
+                        </Button>
+                        <Button Click="OpenConfigFolder_Click">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <FontIcon Glyph="&#xE713;" FontSize="14" />
+                                <TextBlock Text="Abrir configuración" />
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <TextBlock Text="WDigger 2.0 · Herramienta de uso personal · Elevada con privilegios de administrador · requireAdministrator"
+                       FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Margin="0,2,0,0" />
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

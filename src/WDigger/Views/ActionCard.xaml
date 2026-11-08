@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="WDigger.Views.ActionCard"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Border CornerRadius="12" Padding="14"
+            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
+            Tapped="Card_Tapped">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <Grid Grid.Row="0" ColumnSpacing="10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Border Width="34" Height="34" CornerRadius="8" Background="{ThemeResource AppAccentSoftBrush}"
+                        VerticalAlignment="Top">
+                    <FontIcon Glyph="&#xE90F;" FontSize="15" Foreground="{ThemeResource AppAccentBrush}"
+                              HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Border>
+                <TextBlock Grid.Column="1" Text="{Binding Title}" FontWeight="SemiBold" FontSize="13.5"
+                           TextWrapping="Wrap" MaxLines="2" VerticalAlignment="Center" />
+            </Grid>
+
+            <TextBlock Grid.Row="1" Margin="0,8,0,10" Text="{Binding Description}"
+                       FontSize="11.5" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       TextWrapping="Wrap" MaxLines="3" TextTrimming="CharacterEllipsis" />
+
+            <Grid Grid.Row="2">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Border HorizontalAlignment="Left" VerticalAlignment="Center" CornerRadius="8" Padding="8,3,9,3"
+                        Background="{Binding BadgeBackground}">
+                    <TextBlock Text="{Binding BadgeText}" FontSize="10" FontWeight="SemiBold"
+                               Foreground="{Binding BadgeForeground}" CharacterSpacing="40" />
+                </Border>
+                <Button x:Name="RunButton" Grid.Column="1" Content="Ejecutar"
+                        Style="{ThemeResource AccentButtonStyle}"
+                        MinWidth="96" Height="32" FontSize="12" Click="RunButton_Click" />
+            </Grid>
+        </Grid>
+    </Border>
+</UserControl>

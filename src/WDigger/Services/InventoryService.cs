@@ -80,6 +80,36 @@ public sealed class InventoryService
         return list;
     }
 
+    /// <summary>
+    /// Free/total space for the system drive (C:) in gigabytes, for the dashboard.
+    /// Returns null when WMI cannot provide it (e.g. non-Windows or access denied).
+    /// </summary>
+    public (double FreeGB, double TotalGB)? GetSystemDriveSpace()
+    {
+        try
+        {
+            foreach (var row in Query("SELECT FreeSpace, Size FROM Win32_LogicalDisk WHERE DeviceID = 'C:'"))
+            {
+                var free = row.TryGetValue("FreeSpace", out var freeValue) && freeValue is not null
+                    ? Convert.ToDouble(freeValue, CultureInfo.InvariantCulture)
+                    : 0;
+                var total = row.TryGetValue("Size", out var sizeValue) && sizeValue is not null
+                    ? Convert.ToDouble(sizeValue, CultureInfo.InvariantCulture)
+                    : 0;
+                if (total > 0)
+                {
+                    return (free / 1_073_741_824.0, total / 1_073_741_824.0);
+                }
+            }
+        }
+        catch (Exception exception)
+        {
+            _logger.Warn($"Unable to read system drive space: {exception.Message}");
+        }
+
+        return null;
+    }
+
     private static IEnumerable<Dictionary<string, object?>> Query(string wql)
     {
         var results = new List<Dictionary<string, object?>>();
