@@ -5,9 +5,12 @@ dirigida a técnicos de PC y portátiles. Es una alternativa *offline-first* a
 herramientas como WinUtil, con inventario WMI, sensores en tiempo real, estado
 SMART, batería y utilidades de mantenimiento.
 
-La interfaz usa **Windows Forms sobre .NET 8**: navegación lateral, cuadros de
-diálogo de Windows, tablas, salida de comandos integrada, progreso y botón de
-cancelación. Ya no necesita una ventana de terminal ni Spectre.Console.
+La interfaz es una aplicación **WinUI 3 (Windows App SDK)** con Fluent Design:
+barra de título personalizada, navegación lateral (`NavigationView`) con los 13
+módulos además del panel de control, tarjetas de acción, tema claro/oscuro/
+automático persistente, y un **panel de salida integrado** con la salida en
+vivo de los comandos (sin consolas emergentes), resultados en tabla, progreso y
+botón de cancelación.
 
 > **Herramienta de uso personal.** No está destinada a distribución comercial.
 > WDigger solicita siempre elevación mediante UAC y no continúa sin privilegios
@@ -15,10 +18,18 @@ cancelación. Ya no necesita una ventana de terminal ni Spectre.Console.
 
 ## Características de la aplicación
 
-- **Visual nativa:** controles de Windows, fuente Segoe UI, DPI por monitor y
-  compatibilidad con Windows 10/11.
-- **Portable:** un único `WDigger.exe` x64 con .NET y las dependencias incluidas.
-  No necesita instalador ni un runtime de .NET previamente instalado.
+- **Fluent Design nativo:** controles WinUI 3, fuente Segoe UI Variable, Mica,
+  DPI por monitor y compatibilidad con Windows 10/11.
+- **Panel de control:** resumen del sistema (SO, CPU, memoria, disco C:),
+  acciones rápidas, ubicaciones de datos y registro de auditoría.
+- **Tema claro/oscuro/automático:** se cicla desde el pie de navegación y se
+  guarda en `config/ui-settings.json`.
+- **Panel de salida integrado:** stdout/stderr en vivo con colores, copia al
+  portapapeles, limpieza, vista de tabla y botón de cancelación.
+- **Tarjetas de acción:** cada operación muestra descripción, insignia
+  «Modifica el sistema» / «Solo lectura» y botón Ejecutar.
+- **Portable:** un único `WDigger.exe` x64 con .NET, Windows App SDK
+  (self-contained) y las dependencias incluidas. Sin instalador ni runtime previo.
 - **Siempre administrador:** `app.manifest` declara `requireAdministrator` y el
   arranque vuelve a comprobar la elevación como medida adicional.
 - **Sin consolas emergentes:** DISM, SFC, CHKDSK, PowerShell, Winget, netsh y el
@@ -29,26 +40,49 @@ cancelación. Ya no necesita una ventana de terminal ni Spectre.Console.
   los archivos de errores se guardan en la carpeta portable.
 - **Configuración autocontenida:** los JSON originales están incrustados en el
   EXE. Si no existen archivos externos, WDigger usa esos valores e intenta crear
-  copias editables en `config/`. En un USB de solo lectura puede seguir usando
-  los valores incrustados.
+  copias editables en `config/`. Acepta el formato con envoltura (`{"tweaks": [...]}`,
+  `{"packages": [...]}`) y también arrays JSON sueltos. En un USB de solo lectura
+  puede seguir usando los valores incrustados.
+- **Modo simulación:** interruptor «Simulación» en la barra de título (también
+  `--dry-run`) registra las acciones de modificación sin ejecutarlas; persiste;
+  se destaca con un aviso en el panel de control.
 
 ## Stack
 
 | Capa | Tecnología |
 |---|---|
 | Lenguaje / runtime | C# 12, .NET 8, Windows x64 |
-| Interfaz | Windows Forms nativo, alto DPI PerMonitorV2 |
+| Interfaz | WinUI 3 (Windows App SDK 1.8, self-contained), Fluent Design |
 | Sensores | LibreHardwareMonitorLib |
 | Inventario / SMART / batería / BIOS | System.Management (WMI) |
 | Comandos | DISM, SFC, CHKDSK, netsh, PowerShell, Winget, pnputil, winfr, wevtutil, slmgr y ospp.vbs |
 | Configuración | JSON editable en `config/`, con valores incrustados de respaldo |
 | Auditoría | Registro por sesión en `logs/`, incluyendo stdout, stderr, código y duración |
+| CI | GitHub Actions sobre `windows-latest` publica y verifica el EXE portable |
+
+## Estructura
+
+```text
+src/WDigger/
+├─ Program.cs                 # Punto de entrada STAThread, UAC y crash logs
+├─ App.xaml(.cs)              # Recursos de tema (acento, insignias, consola)
+├─ ShellWindow.xaml(.cs)      # Ventana principal: título, NavigationView, panel de salida
+├─ Assets/wdigger.ico         # Icono de la aplicación
+├─ Core/                      # AppHost, CommandExecutor, AppLogger, ConfigManager,
+│                             # RestorePointManager, AppSettings
+├─ Models/                    # ComponentInfo, SensorReading, TweakDefinition, ...
+├─ Services/                  # InventoryService, SensorService, TweakHistoryService
+├─ Modules/                   # 13 módulos + ModuleCatalog (tag → módulo)
+├─ Views/                     # DashboardPage, ModulePage, ActionCard, ActionCardViewModel
+└─ UI/                        # ModuleExecutionContext, DialogService, TableRenderer,
+                              # ModuleAction, OutputKind
+```
 
 ## Módulos
 
 | Módulo | Funciones |
 |---|---|
-| Panel de control | Resumen del sistema y acceso a registros/configuración |
+| Panel de control | Resumen del sistema, acciones rápidas, carpetas de datos y registro |
 | Hardware | Inventario WMI, monitor de sensores, discos y batería |
 | Reparación del sistema | SFC, DISM, CHKDSK, Windows Update y caché de Winget |
 | Software | Instalación Winget/Chocolatey, búsqueda, inventario y Appx |
@@ -70,7 +104,7 @@ cancelación. Ya no necesita una ventana de terminal ni Spectre.Console.
 - [.NET 8 SDK](https://dotnet.microsoft.com/download) o posterior.
 
 El SDK solo es necesario para compilar; **no es necesario en el equipo donde se
-use el EXE publicado**.
+use el EXE publicado** (el Windows App SDK viaja dentro del ejecutable).
 
 Desde la raíz del repositorio:
 
@@ -94,100 +128,26 @@ Copia **solamente ese archivo** a una carpeta con permisos de escritura o a un
 USB. Al ejecutarlo, acepta el aviso de UAC. Windows aplicará el manifiesto
 `requireAdministrator` incluso si el usuario hace doble clic normalmente.
 
-La publicación usa `SelfContained`, `PublishSingleFile`, compresión y no recorta
-ensamblados (`PublishTrimmed=false`) para conservar la compatibilidad de WMI,
-Windows Forms y LibreHardwareMonitor.
+La publicación usa `SelfContained`, `PublishSingleFile`,
+`WindowsAppSDKSelfContained`, compresión y no recorta ensamblados
+(`PublishTrimmed=false`) para conservar la compatibilidad de WMI, WinUI 3 y
+LibreHardwareMonitor.
 
-### Estructura después del primer uso
+## CI
 
-```text
-USB:\WDigger\
-├── WDigger.exe
-├── config\
-│   ├── tweaks.json       # Copia editable; opcional
-│   └── software.json     # Copia editable; opcional
-└── logs\
-    ├── WDigger_yyyyMMdd_HHmmss.log
-    └── applied-tweaks.json
-```
+`.github/workflows/portable-windows.yml` compila y publica el ejecutable en
+`windows-latest` con cada push y pull request, verifica que el artefacto es un
+único `WDigger.exe` con el manifiesto elevador incrustado, y lo sube como
+artefacto.
 
-Los archivos `config/` y `logs/` se generan en tiempo de ejecución; no son
-archivos adicionales necesarios para distribuir la aplicación.
+## Cambios de la versión 2.0
 
-## Desarrollo
-
-```cmd
-git clone <repo-url> WDigger
-cd WDigger
-dotnet restore
-dotnet build
-dotnet run --project "src\WDigger\WDigger.csproj"
-```
-
-Para iniciar en modo simulación:
-
-```cmd
-dotnet run --project "src\WDigger\WDigger.csproj" -- --dry-run
-```
-
-También se puede activar **Modo simulación** desde el encabezado de la ventana.
-La elevación sigue siendo obligatoria en modo simulación para mantener un único
-modelo de ejecución y permitir las consultas de hardware.
-
-## Modo simulación y seguridad
-
-- En modo simulación, los comandos que modificarían el sistema se muestran y se
-  registran, pero no se ejecutan.
-- Las simulaciones de ajustes **no** se agregan al historial de cambios reales.
-- En modo real, las acciones que modifican el sistema solicitan confirmación y
-  muestran una advertencia específica cuando existe riesgo de pérdida de datos.
-- Antes de aplicar o revertir un ajuste reversible, WDigger intenta crear un
-  punto de restauración de Windows. Si no puede crearlo, lo informa.
-- El historial real se guarda en `logs/applied-tweaks.json` para permitir la
-  reversión posterior.
-- Cada comando se audita con su salida completa en
-  `logs/WDigger_yyyyMMdd_HHmmss.log`.
-- Cierra las aplicaciones y guarda el trabajo antes de reparaciones, cambios de
-  red, controladores, limpieza o restauración de copias.
-
-## Configuración
-
-- `config/tweaks.json`: acciones de registro o comandos, con una lista opcional
-  `rollback` por ajuste.
-- `config/software.json`: paquetes predeterminados de Winget/Chocolatey.
-
-Las copias externas tienen prioridad sobre los valores incrustados. Después de
-editarlas, reinicia WDigger para volver a cargarlas. Si un archivo externo tiene
-JSON inválido, el error queda en el registro y ese catálogo se carga vacío.
-
-## Estructura del código
-
-```text
-WDigger/
-├── publish-portable.cmd
-├── config/                       # Definiciones fuente y editables
-└── src/WDigger/
-    ├── WDigger.csproj            # WinExe, Windows Forms y single-file
-    ├── app.manifest              # requireAdministrator + Windows 10/11 + DPI
-    ├── Program.cs                # Arranque STA, UAC y errores globales
-    ├── Properties/PublishProfiles/
-    │   └── Portable-win-x64.pubxml
-    ├── Core/                     # Servicios, procesos, configuración y logging
-    ├── Models/
-    ├── Services/                 # WMI, sensores e historial
-    ├── UI/
-    │   ├── Shell.cs              # Ventana nativa principal
-    │   ├── ModuleAction.cs
-    │   ├── ModuleExecutionContext.cs
-    │   └── NativeDialogs.cs
-    └── Modules/                  # Acciones asíncronas de cada herramienta
-```
-
-Para agregar un módulo, implementa `IModule`, expone sus `ModuleAction` mediante
-`CreateActions(AppHost)` y añade una instancia en `UI/Shell.cs`. Usa
-`ModuleExecutionContext.RunCommandAsync` para conservar dry-run, cancelación,
-salida integrada y auditoría.
-
-## Licencia
-
-Herramienta de uso personal. No se permite distribución comercial.
+- **Reescrito de Windows Forms a WinUI 3 (Windows App SDK 1.8).**
+- Nueva navegación `NavigationView`, panel de control, tarjetas de acción,
+  insignias de seguridad y panel de salida/tabla integrado y contraíble.
+- Tema claro/oscuro/automático persistente (`config/ui-settings.json`).
+- `config/tweaks.json` y `config/software.json` (formato `{"tweaks": [...]}` /
+  `{"packages": [...]}`) ahora se cargan correctamente; antes se esperaba un
+  array JSON suelto y la configuración se ignoraba en silencio.
+- Barra de título personalizada con insignia de administrador e interruptor
+  de modo simulación.

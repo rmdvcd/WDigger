@@ -33,7 +33,7 @@ public sealed class TweaksModule : IModule
             return;
         }
 
-        var tweak = context.Choose("Aplicar ajuste", "Selecciona un ajuste:", host.Config.Tweaks,
+        var tweak = await context.ChooseAsync("Aplicar ajuste", "Selecciona un ajuste:", host.Config.Tweaks,
             item => $"{item.Name} · {item.Category} · {(item.Reversible ? "Reversible" : "No reversible")}");
         if (tweak is null)
         {
@@ -43,7 +43,7 @@ public sealed class TweaksModule : IModule
         context.ShowTable($"Vista previa · {tweak.Name}", new[] { "Tipo", "Acción" },
             tweak.Actions.Select(action => new[] { action.Type, FormatAction(action) }));
         context.WriteLine(tweak.Description, OutputKind.Muted);
-        if (!context.Confirm("Aplicar ajuste", $"{tweak.Description}\n\n¿Aplicar «{tweak.Name}»?"))
+        if (!await context.ConfirmAsync("Aplicar ajuste", $"{tweak.Description}\n\n¿Aplicar «{tweak.Name}»?"))
         {
             return;
         }
@@ -88,7 +88,7 @@ public sealed class TweaksModule : IModule
             return;
         }
 
-        var tweak = context.Choose("Revertir ajuste", "Selecciona el ajuste que quieres revertir:",
+        var tweak = await context.ChooseAsync("Revertir ajuste", "Selecciona el ajuste que quieres revertir:",
             applicable, item => $"{item.Name} ({item.Id})");
         if (tweak is null)
         {
@@ -97,7 +97,7 @@ public sealed class TweaksModule : IModule
 
         context.ShowTable($"Reversión · {tweak.Name}", new[] { "Tipo", "Acción" },
             tweak.Rollback.Select(action => new[] { action.Type, FormatAction(action) }));
-        if (!context.Confirm("Revertir ajuste", $"¿Ejecutar la reversión de «{tweak.Name}»?"))
+        if (!await context.ConfirmAsync("Revertir ajuste", $"¿Ejecutar la reversión de «{tweak.Name}»?"))
         {
             return;
         }

@@ -3,12 +3,17 @@ using WDigger.Models;
 
 namespace WDigger.UI;
 
-/// <summary>Native dialogs, tables and command execution available to modules.</summary>
+/// <summary>
+/// UI helpers available to modules: output, status, progress, tabular results,
+/// dialogs and command execution. Implemented by the WinUI shell. All dialog
+/// helpers are asynchronous because ContentDialog cannot be shown
+/// synchronously without deadlocking the dispatcher.
+/// </summary>
 public sealed class ModuleExecutionContext
 {
-    private readonly Shell _shell;
+    private readonly ShellWindow _shell;
 
-    internal ModuleExecutionContext(Shell shell, AppHost host)
+    internal ModuleExecutionContext(ShellWindow shell, AppHost host)
     {
         _shell = shell;
         Host = host;
@@ -26,29 +31,20 @@ public sealed class ModuleExecutionContext
     public void ShowTable(string title, IReadOnlyList<string> columns, IEnumerable<string[]> rows)
         => _shell.ShowTable(title, columns, rows);
 
-    public string? Prompt(string title, string label, string defaultValue = "", bool allowEmpty = false)
-        => NativeDialogs.Prompt(_shell, title, label, defaultValue, allowEmpty);
+    public Task<string?> PromptAsync(string title, string label, string defaultValue = "", bool allowEmpty = false)
+        => _shell.Dialogs.PromptAsync(title, label, defaultValue, allowEmpty);
 
-    public T? Choose<T>(string title, string label, IEnumerable<T> choices, Func<T, string> formatter)
+    public Task<T?> ChooseAsync<T>(string title, string label, IEnumerable<T> choices, Func<T, string> formatter)
         where T : class
-    {
-        var items = choices.ToList();
-        if (items.Count == 0)
-        {
-            return null;
-        }
+        => _shell.Dialogs.ChooseAsync(title, label, choices, formatter);
 
-        var selected = NativeDialogs.Choose(_shell, title, label, items.Select(formatter).ToArray());
-        return selected.HasValue ? items[selected.Value] : null;
-    }
+    public Task<string?> PickFileAsync(string title, string filter, string? initialPath = null)
+        => _shell.Dialogs.PickFileAsync(title, filter, initialPath);
 
-    public string? PickFile(string title, string filter, string? initialPath = null)
-        => NativeDialogs.PickFile(_shell, title, filter, initialPath);
+    public Task<string?> PickFolderAsync(string description, string? initialPath = null)
+        => _shell.Dialogs.PickFolderAsync(description, initialPath);
 
-    public string? PickFolder(string description, string? initialPath = null)
-        => NativeDialogs.PickFolder(_shell, description, initialPath);
-
-    public bool Confirm(string title, string message)
+    public async Task<bool> ConfirmAsync(string title, string message)
     {
         if (Host.DryRun)
         {
@@ -56,13 +52,7 @@ public sealed class ModuleExecutionContext
             return true;
         }
 
-        return MessageBox.Show(
-                   _shell,
-                   message,
-                   title,
-                   MessageBoxButtons.YesNo,
-                   MessageBoxIcon.Warning,
-                   MessageBoxDefaultButton.Button2) == DialogResult.Yes;
+        return await _shell.Dialogs.ConfirmAsync(title, message);
     }
 
     public async Task<CommandResult> RunCommandAsync(

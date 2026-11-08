@@ -1,21 +1,25 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Security.Principal;
-using WDigger.Core;
-using WDigger.UI;
 
 namespace WDigger;
 
+/// <summary>
+/// WinUI 3 entry point. The manifest normally elevates before Main; this guard
+/// also covers development hosts and prevents any unelevated code path.
+/// </summary>
 internal static class Program
 {
     [STAThread]
     private static int Main(string[] args)
     {
-        Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
-        Application.EnableVisualStyles();
-        Application.SetCompatibleTextRenderingDefault(false);
+        // The manifest normally elevates before Main. This guard also covers
+        // development hosts and prevents any unelevated code path.
+        if (!IsAdministrator())
+        {
+            return RelaunchElevated(args);
+        }
 
-        Application.ThreadException += (_, e) => ShowFatalError(e.Exception);
         AppDomain.CurrentDomain.UnhandledException += (_, e) =>
         {
             if (e.ExceptionObject is Exception exception)
@@ -24,22 +28,9 @@ internal static class Program
             }
         };
 
-        // The manifest normally elevates before Main. This guard also covers
-        // development hosts and prevents any unelevated code path.
-        if (!IsAdministrator())
-        {
-            return RelaunchElevated(args);
-        }
-
-        try
-        {
-            return Core.App.Run(args);
-        }
-        catch (Exception exception)
-        {
-            ShowFatalError(exception);
-            return 1;
-        }
+        WinRT.ComWrappersSupport.InitializeComWrappers();
+        Microsoft.UI.Xaml.Application.Start(_ => new App());
+        return 0;
     }
 
     internal static bool IsAdministrator()
@@ -64,7 +55,12 @@ internal static class Program
     {
         try
         {
-            var executable = Environment.ProcessPath ?? Application.ExecutablePath;
+            var executable = Environment.ProcessPath ?? Process.GetCurrentProcess().MainModule?.FileName;
+            if (string.IsNullOrWhiteSpace(executable))
+            {
+                return 1;
+            }
+
             var startInfo = new ProcessStartInfo
             {
                 FileName = executable,
@@ -86,31 +82,25 @@ internal static class Program
         }
         catch (Win32Exception exception) when (exception.NativeErrorCode == 1223)
         {
-            MessageBox.Show(
-                "WDigger necesita privilegios de administrador. Acepta el aviso de Control de cuentas de usuario para continuar.",
-                "Elevación requerida",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Warning);
+            // ERROR_CANCELLED: the user declined the UAC prompt.
+            WriteCrashLog(new InvalidOperationException(
+                "WDigger necesita privilegios de administrador. Acepta el aviso de UAC para continuar.", exception));
+            return 1;
+        }
+        catch (Win32Exception exception) when (exception.NativeErrorCode == 740)
+        {
+            // ERROR_ELEVATION_REQUIRED should not happen (manifest requires admin).
+            WriteCrashLog(exception);
             return 1;
         }
         catch (Exception exception)
         {
-            ShowFatalError(exception);
+            WriteCrashLog(exception);
             return 1;
         }
     }
 
-    private static void ShowFatalError(Exception exception)
-    {
-        WriteCrashLog(exception);
-        MessageBox.Show(
-            $"WDigger no puede continuar.\n\n{exception.Message}\n\nConsulta WDigger.crash.log junto al ejecutable para obtener más detalles.",
-            "Error de WDigger",
-            MessageBoxButtons.OK,
-            MessageBoxIcon.Error);
-    }
-
-    private static void WriteCrashLog(Exception exception)
+    internal static void WriteCrashLog(Exception exception)
     {
         try
         {

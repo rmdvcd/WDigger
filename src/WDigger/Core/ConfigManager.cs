@@ -6,7 +6,10 @@ namespace WDigger.Core;
 
 /// <summary>
 /// Loads editable JSON files beside the portable executable. Factory defaults
-/// are embedded in the EXE, so configuration is never a separate publish dependency.
+/// are embedded in the EXE, so configuration is never a separate publish
+/// dependency. Accepts both the current wrapper shape ({ "tweaks": [...] },
+/// { "packages": [...] }) and a bare top-level array for forwards
+/// compatibility.
 /// </summary>
 public sealed class ConfigManager
 {
@@ -26,11 +29,11 @@ public sealed class ConfigManager
     {
         _configDirectory = configDirectory;
         _logger = logger;
-        Tweaks = LoadJson<List<TweakDefinition>>("tweaks.json") ?? new();
-        Software = LoadJson<List<SoftwareDefinition>>("software.json") ?? new();
+        Tweaks = LoadJson<List<TweakDefinition>>("tweaks.json", "tweaks") ?? new();
+        Software = LoadJson<List<SoftwareDefinition>>("software.json", "packages") ?? new();
     }
 
-    private T? LoadJson<T>(string fileName)
+    private T? LoadJson<T>(string fileName, string wrapperKey)
     {
         var path = Path.Combine(_configDirectory, fileName);
         try
@@ -46,13 +49,35 @@ public sealed class ConfigManager
                 TryWritePortableDefault(path, json);
             }
 
-            return JsonSerializer.Deserialize<T>(json, JsonOptions);
+            return DeserializeTolerant<T>(json, wrapperKey);
         }
         catch (Exception exception)
         {
             _logger.Error($"Failed to load configuration '{path}': {exception}");
             return default;
         }
+    }
+
+    private static T? DeserializeTolerant<T>(string json, string wrapperKey)
+    {
+        using var document = JsonDocument.Parse(json);
+        var element = document.RootElement;
+
+        // Unwrap { "<key>": [ ... ] }, otherwise expect a top-level array.
+        if (element.ValueKind == JsonValueKind.Object
+            && element.TryGetProperty(wrapperKey, out var inner)
+            && inner.ValueKind == JsonValueKind.Array)
+        {
+            element = inner;
+        }
+
+        if (element.ValueKind != JsonValueKind.Array)
+        {
+            throw new JsonException(
+                $"Expected a JSON array (optionally wrapped in '{wrapperKey}').");
+        }
+
+        return element.Deserialize<T>(JsonOptions);
     }
 
     private static string ReadEmbeddedDefault(string fileName)

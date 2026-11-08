@@ -30,7 +30,7 @@ public sealed class EventLogBiosModule : IModule
     private static async Task QueryEventLogAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
     {
         _ = host;
-        var log = context.Prompt("Consultar eventos", "Nombre del registro (System, Application, Security...):", "System");
+        var log = await context.PromptAsync("Consultar eventos", "Nombre del registro (System, Application, Security...):", "System");
         if (log is not null)
         {
             await context.RunCommandAsync("wevtutil", $"qe \"{log}\" /c:20 /f:text /rd:true", token);

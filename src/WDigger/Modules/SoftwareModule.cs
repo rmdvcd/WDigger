@@ -45,7 +45,7 @@ public sealed class SoftwareModule : IModule
         }
 
         ShowPackages(context, packages);
-        if (!context.Confirm("Instalar paquetes configurados",
+        if (!await context.ConfirmAsync("Instalar paquetes configurados",
                 $"Se procesarán {packages.Count} paquetes. ¿Quieres continuar?"))
         {
             return;
@@ -65,7 +65,7 @@ public sealed class SoftwareModule : IModule
 
     private static async Task InstallSingleAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
     {
-        var package = context.Choose("Instalar paquete", "Selecciona el paquete:",
+        var package = await context.ChooseAsync("Instalar paquete", "Selecciona el paquete:",
             host.Config.Software, item => $"{item.Name} ({item.Id}) [{item.Source}]");
         if (package is null)
         {
@@ -76,7 +76,7 @@ public sealed class SoftwareModule : IModule
             return;
         }
 
-        if (!context.Confirm("Instalar paquete", $"Se instalará {package.Name} ({package.Id}). ¿Continuar?"))
+        if (!await context.ConfirmAsync("Instalar paquete", $"Se instalará {package.Name} ({package.Id}). ¿Continuar?"))
         {
             return;
         }
@@ -86,7 +86,7 @@ public sealed class SoftwareModule : IModule
     private static async Task SearchAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
     {
         _ = host;
-        var query = context.Prompt("Buscar con Winget", "Nombre o identificador del paquete:");
+        var query = await context.PromptAsync("Buscar con Winget", "Nombre o identificador del paquete:");
         if (query is null)
         {
             return;
@@ -97,7 +97,7 @@ public sealed class SoftwareModule : IModule
     private static async Task RemoveAppxAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
     {
         _ = host;
-        var pattern = context.Prompt("Quitar paquete Appx", "Patrón del nombre (por ejemplo, *Weather*):");
+        var pattern = await context.PromptAsync("Quitar paquete Appx", "Patrón del nombre (por ejemplo, *Weather*):");
         if (pattern is null)
         {
             return;

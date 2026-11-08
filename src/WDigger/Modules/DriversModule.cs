@@ -31,8 +31,8 @@ public sealed class DriversModule : IModule
     private static async Task BackupDriversAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
     {
         var initial = Path.Combine(host.BaseDirectory, "drivers-backup");
-        var destination = context.PickFolder("Selecciona la carpeta de destino de la copia", initial)
-            ?? context.Prompt("Exportar controladores", "Carpeta de destino:", initial);
+        var destination = await context.PickFolderAsync("Selecciona la carpeta de destino de la copia", initial)
+            ?? await context.PromptAsync("Exportar controladores", "Carpeta de destino:", initial);
         if (destination is null)
         {
             return;
@@ -48,7 +48,7 @@ public sealed class DriversModule : IModule
     private static async Task AddDriverAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
     {
         _ = host;
-        var inf = context.PickFile("Seleccionar controlador", "Controladores INF (*.inf)|*.inf|Todos los archivos (*.*)|*.*");
+        var inf = await context.PickFileAsync("Seleccionar controlador", "Controladores INF (*.inf)|*.inf|Todos los archivos (*.*)|*.*");
         if (inf is null)
         {
             return;
