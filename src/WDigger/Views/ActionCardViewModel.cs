@@ -10,11 +10,11 @@ public sealed class ActionCardViewModel
     private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush DangerBackground = new(
         Microsoft.UI.ColorHelper.FromArgb(0x26, 0xC4, 0x2B, 0x1C));
     private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush DangerForeground = new(
-        Microsoft.UI.ColorHelper.FromArgb(0xFF, 0xE06C60));
+        Microsoft.UI.ColorHelper.FromArgb(0xFF, 0xE0, 0x6C, 0x60));
     private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush SafeBackground = new(
         Microsoft.UI.ColorHelper.FromArgb(0x26, 0x10, 0x7C, 0x10));
     private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush SafeForeground = new(
-        Microsoft.UI.ColorHelper.FromArgb(0xFF, 0x4CC26A));
+        Microsoft.UI.ColorHelper.FromArgb(0xFF, 0x4C, 0xC2, 0x6A));
 
     public ActionCardViewModel(ModuleAction action, Func<ModuleAction, Task> run)
     {
