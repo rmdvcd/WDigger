@@ -51,7 +51,7 @@ jobs:
           "exitcode=$LASTEXITCODE" >> $env:GITHUB_OUTPUT
 
       - name: Annotate publish errors
-        if: steps.publish.outcome == 'success' -and steps.publish.outputs.exitcode != '0'
+        if: steps.publish.outcome == 'success' && steps.publish.outputs.exitcode != '0'
         shell: pwsh
         run: |
           $pattern = '(?i)(error|exception|failed)\b'
