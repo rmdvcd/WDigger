@@ -154,7 +154,7 @@
                                  IsIndeterminate="False" Value="0" Visibility="Collapsed" />
 
                     <!-- ═══ Integrated output / results pane ═══ -->
-                    <Border x:Name="OutputPane" Grid.Row="2"
+                    <Border Grid.Row="2"
                             BorderThickness="0,1,0,0" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                             Background="{ThemeResource LayerFillColorDefaultBrush}">
                         <Grid>
