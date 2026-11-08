@@ -41,3 +41,6 @@ drivers-backup/
 
 # Crash dumps
 WDigger.crash.log
+
+# Preferencias de UI generadas en ejecución (dev local)
+config/ui-settings.json

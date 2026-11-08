@@ -64,18 +64,16 @@ botón de cancelación.
 
 ```text
 src/WDigger/
-├─ Program.cs                 # Punto de entrada STAThread, UAC y crash logs
-├─ App.xaml(.cs)              # Recursos de tema (acento, insignias, consola)
-├─ ShellWindow.xaml(.cs)      # Ventana principal: título, NavigationView, panel de salida
+├─ App.xaml(.cs)              # Recursos de tema + arranque (elevación UAC y crash logs)
+├─ UI/                        # Ventana principal (ShellWindow), DialogService, TableRenderer,
+│                             # ModuleExecutionContext, ModuleAction, NativeMessageBox
 ├─ Assets/wdigger.ico         # Icono de la aplicación
 ├─ Core/                      # AppHost, CommandExecutor, AppLogger, ConfigManager,
-│                             # RestorePointManager, AppSettings
+│                             # RestorePointManager, AppSettings, CrashLog
 ├─ Models/                    # ComponentInfo, SensorReading, TweakDefinition, ...
 ├─ Services/                  # InventoryService, SensorService, TweakHistoryService
 ├─ Modules/                   # 13 módulos + ModuleCatalog (tag → módulo)
 ├─ Views/                     # DashboardPage, ModulePage, ActionCard, ActionCardViewModel
-└─ UI/                        # ModuleExecutionContext, DialogService, TableRenderer,
-                              # ModuleAction, OutputKind
 ```
 
 ## Módulos
