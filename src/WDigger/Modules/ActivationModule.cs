@@ -1,132 +1,94 @@
-using System.IO;
-using System.Linq;
-using Spectre.Console;
 using WDigger.Core;
+using WDigger.Models;
+using WDigger.UI;
 
 namespace WDigger.Modules;
 
-/// <summary>
-/// Module for Windows and Office activation status and HEU-KMS helper.
-/// WARNING: HEU-KMS is a third-party tool. Use only for personal evaluation
-/// in compliance with applicable laws and Microsoft licensing terms.
-/// </summary>
-public class ActivationModule : IModule
+public sealed class ActivationModule : IModule
 {
-    public string Name => "Activation";
-    public string Description => "Windows and Office activation status and HEU-KMS helper.";
+    public string Name => "Activación";
+    public string Description => "Estado de licencias de Windows y Office y detección de herramientas existentes.";
 
-    public void Run(AppHost host)
+    public IReadOnlyList<ModuleAction> CreateActions(AppHost host) => new[]
     {
-        while (true)
-        {
-            var choice = AnsiConsole.Prompt(new SelectionPrompt<string>()
-                .Title("Activation module")
-                .AddChoices(
-                    "Check Windows activation status",
-                    "Activate Windows (slmgr /ato)",
-                    "Check Office activation status",
-                    "Activate Office (cscript ospp.vbs)",
-                    "Detect HEU-KMS installation",
-                    "Back to main menu"));
+        new ModuleAction("Comprobar activación de Windows", "Consulta el estado de la licencia mediante slmgr /xpr.",
+            (context, token) => Run(host, context, token, "cscript", "//Nologo %SystemRoot%\\System32\\slmgr.vbs /xpr")),
+        new ModuleAction("Activar Windows", "Solicita activación con la clave o licencia digital ya configurada.",
+            (context, token) => Run(host, context, token, "cscript", "//Nologo %SystemRoot%\\System32\\slmgr.vbs /ato"),
+            changesSystem: true,
+            confirmation: "Se intentará activar Windows con la licencia configurada. No se instalarán claves nuevas."),
+        new ModuleAction("Comprobar activación de Office", "Localiza ospp.vbs y consulta el estado de las licencias de Office.",
+            (context, token) => CheckOfficeStatusAsync(host, context, token)),
+        new ModuleAction("Activar Office", "Solicita activación mediante ospp.vbs con la licencia existente.",
+            (context, token) => ActivateOfficeAsync(host, context, token), changesSystem: true,
+            confirmation: "Se intentará activar Office con su licencia configurada."),
+        new ModuleAction("Detectar HEU-KMS existente", "Solo informa de instalaciones presentes en ubicaciones habituales; no descarga ni ejecuta software.",
+            (context, token) => DetectHeuKms(host, context, token))
+    };
 
-            switch (choice)
-            {
-                case "Check Windows activation status":
-                    host.Commands.Run("cscript", "//Nologo %SystemRoot%\\System32\\slmgr.vbs /xpr");
-                    break;
-                case "Activate Windows (slmgr /ato)":
-                    AnsiConsole.MarkupLine("[yellow]Requires Administrator and a valid product key / digital license.[/]");
-                    if (Confirm(host)) host.Commands.Run("cscript", "//Nologo %SystemRoot%\\System32\\slmgr.vbs /ato");
-                    break;
-                case "Check Office activation status":
-                    CheckOfficeStatus(host);
-                    break;
-                case "Activate Office (cscript ospp.vbs)":
-                    AnsiConsole.MarkupLine("[yellow]Requires Administrator and a valid Office license.[/]");
-                    if (Confirm(host)) ActivateOffice(host);
-                    break;
-                case "Detect HEU-KMS installation":
-                    DetectHeuKms(host);
-                    break;
-                case "Back to main menu":
-                    return;
-            }
-
-            AnsiConsole.WriteLine();
-            AnsiConsole.MarkupLine("[grey]Press any key to return...[/]");
-            Console.ReadKey(true);
-        }
-    }
-
-    private static void CheckOfficeStatus(AppHost host)
+    private static async Task CheckOfficeStatusAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
     {
-        var officePaths = new[]
+        _ = host;
+        var script = FindOfficeScript();
+        if (script is null)
         {
-            @"C:\Program Files\Microsoft Office\Office16\ospp.vbs",
-            @"C:\Program Files (x86)\Microsoft Office\Office16\ospp.vbs",
-            @"C:\Program Files\Microsoft Office\Office15\ospp.vbs",
-            @"C:\Program Files (x86)\Microsoft Office\Office15\ospp.vbs"
-        };
-
-        var vbs = officePaths.FirstOrDefault(File.Exists);
-        if (vbs is null)
-        {
-            AnsiConsole.MarkupLine("[yellow]Office ospp.vbs not found in common locations.[/]");
+            context.WriteLine("No se encontró ospp.vbs en las ubicaciones habituales de Office.", OutputKind.Warning);
             return;
         }
-
-        host.Commands.Run("cscript", $"//Nologo \"{vbs}\" /dstatus");
+        await context.RunCommandAsync("cscript", $"//Nologo \"{script}\" /dstatus", token);
     }
 
-    private static void ActivateOffice(AppHost host)
+    private static async Task ActivateOfficeAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
     {
-        var vbs = new[]
+        _ = host;
+        var script = FindOfficeScript();
+        if (script is null)
         {
-            @"C:\Program Files\Microsoft Office\Office16\ospp.vbs",
-            @"C:\Program Files (x86)\Microsoft Office\Office16\ospp.vbs",
-            @"C:\Program Files\Microsoft Office\Office15\ospp.vbs",
-            @"C:\Program Files (x86)\Microsoft Office\Office15\ospp.vbs"
-        }.FirstOrDefault(File.Exists);
-
-        if (vbs is null)
-        {
-            AnsiConsole.MarkupLine("[yellow]Office ospp.vbs not found.[/]");
+            context.WriteLine("No se encontró ospp.vbs en las ubicaciones habituales de Office.", OutputKind.Warning);
             return;
         }
-
-        host.Commands.Run("cscript", $"//Nologo \"{vbs}\" /act");
+        await context.RunCommandAsync("cscript", $"//Nologo \"{script}\" /act", token);
     }
 
-    private static void DetectHeuKms(AppHost host)
+    private static Task DetectHeuKms(AppHost host, ModuleExecutionContext context, CancellationToken token)
     {
-        var paths = new[]
+        _ = host;
+        _ = token;
+        var found = new[]
         {
             @"C:\Program Files\HEU_KMS_Activator",
             @"C:\Program Files (x86)\HEU_KMS_Activator",
             @"C:\Tools\HEU_KMS_Activator",
             @"C:\HEU_KMS_Activator"
-        };
+        }.FirstOrDefault(Directory.Exists);
 
-        var found = paths.FirstOrDefault(Directory.Exists);
         if (found is null)
         {
-            AnsiConsole.MarkupLine("[yellow]HEU-KMS Activator not detected in common locations.[/]");
-            AnsiConsole.MarkupLine("[grey]Note: HEU-KMS is a third-party activation tool. Use only for personal evaluation in compliance with applicable laws and Microsoft licensing terms.[/]");
+            context.WriteLine("No se detectó HEU-KMS en las ubicaciones habituales.", OutputKind.Warning);
         }
         else
         {
-            AnsiConsole.MarkupLine($"[green]HEU-KMS detected at: {found}[/]");
-            var exe = Directory.GetFiles(found, "*.exe", SearchOption.TopDirectoryOnly).FirstOrDefault();
-            if (exe is not null)
-            {
-                AnsiConsole.MarkupLine($"Executable: {Path.GetFileName(exe)}");
-            }
+            context.WriteLine($"Instalación detectada: {found}", OutputKind.Success);
+            var executable = Directory.EnumerateFiles(found, "*.exe", SearchOption.TopDirectoryOnly).FirstOrDefault();
+            if (executable is not null) context.WriteLine($"Ejecutable: {Path.GetFileName(executable)}");
         }
+        context.WriteLine("Las herramientas de terceros deben utilizarse conforme a las licencias y la legislación aplicable.",
+            OutputKind.Muted);
+        return Task.CompletedTask;
     }
 
-    private static bool Confirm(AppHost host)
+    private static string? FindOfficeScript() => new[]
     {
-        AnsiConsole.MarkupLine(host.DryRun ? "[grey][DRY-RUN][/]" : "[red][LIVE - changes will be applied][/]");
-        return host.DryRun || AnsiConsole.Confirm("Apply this action on the real system?");
+        @"C:\Program Files\Microsoft Office\Office16\ospp.vbs",
+        @"C:\Program Files (x86)\Microsoft Office\Office16\ospp.vbs",
+        @"C:\Program Files\Microsoft Office\Office15\ospp.vbs",
+        @"C:\Program Files (x86)\Microsoft Office\Office15\ospp.vbs"
+    }.FirstOrDefault(File.Exists);
+
+    private static Task<CommandResult> Run(
+        AppHost host, ModuleExecutionContext context, CancellationToken token, string fileName, string arguments)
+    {
+        _ = host;
+        return context.RunCommandAsync(fileName, arguments, token);
     }
 }

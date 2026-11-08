@@ -1,124 +1,95 @@
-using Spectre.Console;
 using WDigger.Core;
+using WDigger.Models;
+using WDigger.UI;
 
 namespace WDigger.Modules;
 
-/// <summary>
-/// Module for advanced network configuration: static IP, firewall, ports,
-/// traceroute, proxy and computer rename.
-/// </summary>
-public class AdvancedNetworkModule : IModule
+public sealed class AdvancedNetworkModule : IModule
 {
-    public string Name => "Advanced Network";
-    public string Description => "Advanced network configuration: static IP, firewall, ports, traceroute, proxy.";
+    public string Name => "Red avanzada";
+    public string Description => "IP estática, DHCP, puertos, firewall, proxy y nombre del equipo.";
 
-    public void Run(AppHost host)
+    public IReadOnlyList<ModuleAction> CreateActions(AppHost host) => new[]
     {
-        while (true)
+        new ModuleAction("Configurar IP estática", "Asigna dirección, máscara y puerta de enlace a un adaptador.",
+            (context, token) => SetStaticIpAsync(host, context, token), changesSystem: true,
+            confirmation: "Una dirección o puerta de enlace incorrecta puede desconectar el equipo."),
+        new ModuleAction("Usar DHCP automáticamente", "Configura IP y DNS automáticos en un adaptador.",
+            (context, token) => SetDhcpAsync(host, context, token), changesSystem: true),
+        new ModuleAction("Mostrar puertos abiertos", "Muestra conexiones y puertos mediante netstat -ano.",
+            (context, token) => Run(host, context, token, "netstat", "-ano")),
+        new ModuleAction("Trazar ruta a un host", "Ejecuta tracert hasta un nombre de host o IP.",
+            (context, token) => TraceRouteAsync(host, context, token)),
+        new ModuleAction("Mostrar reglas del firewall", "Enumera las reglas de Windows Firewall.",
+            (context, token) => Run(host, context, token, "netsh", "advfirewall firewall show rule name=all")),
+        new ModuleAction("Configurar proxy WinHTTP", "Define un proxy o restablece la configuración si se deja vacío.",
+            (context, token) => ConfigureProxyAsync(host, context, token), changesSystem: true),
+        new ModuleAction("Cambiar nombre del equipo", "Programa un nuevo nombre de equipo para el próximo reinicio.",
+            (context, token) => RenameComputerAsync(host, context, token), changesSystem: true,
+            confirmation: "El nuevo nombre se aplicará después de reiniciar Windows.")
+    };
+
+    private static async Task SetStaticIpAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
+    {
+        _ = host;
+        var adapter = context.Prompt("IP estática", "Nombre exacto del adaptador:");
+        if (adapter is null) return;
+        var ip = context.Prompt("IP estática", "Dirección IP (por ejemplo, 192.168.1.50):");
+        if (ip is null) return;
+        var mask = context.Prompt("IP estática", "Máscara de subred:", "255.255.255.0");
+        if (mask is null) return;
+        var gateway = context.Prompt("IP estática", "Puerta de enlace predeterminada:");
+        if (gateway is null) return;
+
+        await context.RunCommandAsync("netsh",
+            $"interface ip set address name=\"{adapter}\" static {ip} {mask} {gateway}", token);
+    }
+
+    private static async Task SetDhcpAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
+    {
+        _ = host;
+        var adapter = context.Prompt("Configurar DHCP", "Nombre exacto del adaptador:");
+        if (adapter is null) return;
+        await context.RunCommandAsync("netsh", $"interface ip set address name=\"{adapter}\" dhcp", token);
+        await context.RunCommandAsync("netsh", $"interface ip set dns name=\"{adapter}\" dhcp", token);
+    }
+
+    private static async Task TraceRouteAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
+    {
+        _ = host;
+        var target = context.Prompt("Trazar ruta", "Nombre de host o dirección IP:");
+        if (target is not null)
         {
-            var choice = AnsiConsole.Prompt(new SelectionPrompt<string>()
-                .Title("Advanced Network module")
-                .AddChoices(
-                    "Set static IP address",
-                    "Set DHCP (obtain automatically)",
-                    "Show open ports (netstat)",
-                    "Traceroute to host",
-                    "Windows Firewall rules",
-                    "Configure WinHTTP proxy",
-                    "Rename computer",
-                    "Back to main menu"));
-
-            switch (choice)
-            {
-                case "Set static IP address":
-                    SetStaticIp(host);
-                    break;
-                case "Set DHCP (obtain automatically)":
-                    SetDhcp(host);
-                    break;
-                case "Show open ports (netstat)":
-                    host.Commands.Run("netstat", "-ano");
-                    break;
-                case "Traceroute to host":
-                    {
-                        var target = AnsiConsole.Ask<string>("Host or IP to trace");
-                        if (!string.IsNullOrWhiteSpace(target))
-                        {
-                            host.Commands.Run("tracert", target);
-                        }
-                    }
-                    break;
-                case "Windows Firewall rules":
-                    host.Commands.Run("netsh", "advfirewall firewall show rule name=all");
-                    break;
-                case "Configure WinHTTP proxy":
-                    ConfigureProxy(host);
-                    break;
-                case "Rename computer":
-                    RenameComputer(host);
-                    break;
-                case "Back to main menu":
-                    return;
-            }
-
-            AnsiConsole.WriteLine();
-            AnsiConsole.MarkupLine("[grey]Press any key to return...[/]");
-            Console.ReadKey(true);
+            await context.RunCommandAsync("tracert", target, token);
         }
     }
 
-    private static void SetStaticIp(AppHost host)
+    private static async Task ConfigureProxyAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
     {
-        AnsiConsole.MarkupLine("[yellow]Requires Administrator. Choose the adapter name from 'Show DNS configuration' in Network module.[/]");
-        var adapter = AnsiConsole.Ask<string>("Adapter name (e.g. Ethernet, Wi-Fi)");
-        if (string.IsNullOrWhiteSpace(adapter)) return;
-        var ip = AnsiConsole.Ask<string>("IP address (e.g. 192.168.1.50)");
-        if (string.IsNullOrWhiteSpace(ip)) return;
-        var mask = AnsiConsole.Ask<string>("Subnet mask (e.g. 255.255.255.0)", "255.255.255.0");
-        var gateway = AnsiConsole.Ask<string>("Default gateway (e.g. 192.168.1.1)");
-        if (!Confirm(host)) return;
-
-        host.Commands.Run("netsh", $"interface ip set address name=\"{adapter}\" static {ip} {mask} {gateway}");
-        AnsiConsole.MarkupLine("[green]Static IP configured (simulated if dry-run mode is on).[/]");
+        _ = host;
+        var proxy = context.Prompt("Proxy WinHTTP",
+            "Servidor (por ejemplo, proxy.empresa.com:8080). Déjalo vacío para restablecer:", allowEmpty: true);
+        if (proxy is null) return;
+        await context.RunCommandAsync("netsh", string.IsNullOrWhiteSpace(proxy)
+            ? "winhttp reset proxy"
+            : $"winhttp set proxy {proxy}", token);
     }
 
-    private static void SetDhcp(AppHost host)
+    private static async Task RenameComputerAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
     {
-        var adapter = AnsiConsole.Ask<string>("Adapter name (e.g. Ethernet, Wi-Fi)");
-        if (string.IsNullOrWhiteSpace(adapter)) return;
-        if (!Confirm(host)) return;
-        host.Commands.Run("netsh", $"interface ip set address name=\"{adapter}\" dhcp");
-        host.Commands.Run("netsh", $"interface ip set dns name=\"{adapter}\" dhcp");
-        AnsiConsole.MarkupLine("[green]DHCP enabled (simulated if dry-run mode is on).[/]");
+        _ = host;
+        var newName = context.Prompt("Cambiar nombre del equipo", "Nuevo nombre:");
+        if (newName is null) return;
+        var escaped = newName.Replace("'", "''");
+        await context.RunCommandAsync("powershell",
+            $"-NoProfile -Command \"Rename-Computer -NewName '{escaped}' -Restart:$false\"", token);
+        context.WriteLine("Nombre programado. Reinicia Windows para aplicarlo.", OutputKind.Success);
     }
 
-    private static void ConfigureProxy(AppHost host)
+    private static Task<CommandResult> Run(
+        AppHost host, ModuleExecutionContext context, CancellationToken token, string fileName, string arguments)
     {
-        var proxy = AnsiConsole.Ask<string>("Proxy server (e.g. proxy.company.com:8080), leave empty to reset");
-        if (!Confirm(host)) return;
-        if (string.IsNullOrWhiteSpace(proxy))
-        {
-            host.Commands.Run("netsh", "winhttp reset proxy");
-        }
-        else
-        {
-            host.Commands.Run("netsh", $"winhttp set proxy {proxy}");
-        }
-    }
-
-    private static void RenameComputer(AppHost host)
-    {
-        var newName = AnsiConsole.Ask<string>("New computer name");
-        if (string.IsNullOrWhiteSpace(newName)) return;
-        AnsiConsole.MarkupLine("[yellow]A reboot is required after renaming the computer.[/]");
-        if (!Confirm(host)) return;
-        host.Commands.Run("powershell", $"-Command \"Rename-Computer -NewName '{newName}' -Restart:$false\"");
-        AnsiConsole.MarkupLine("[green]Computer rename scheduled. Reboot to apply.[/]");
-    }
-
-    private static bool Confirm(AppHost host)
-    {
-        AnsiConsole.MarkupLine(host.DryRun ? "[grey][DRY-RUN][/]" : "[red][LIVE - changes will be applied][/]");
-        return host.DryRun || AnsiConsole.Confirm("Apply this action on the real system?");
+        _ = host;
+        return context.RunCommandAsync(fileName, arguments, token);
     }
 }

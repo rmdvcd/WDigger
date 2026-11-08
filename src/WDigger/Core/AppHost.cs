@@ -1,14 +1,12 @@
-using System.IO;
 using WDigger.Services;
 
 namespace WDigger.Core;
 
 /// <summary>
-/// Hosts the shared application services (logger, command executor, hardware
-/// services, configuration, ...). One instance lives for the lifetime of the
-/// process and is passed to every module.
+/// Shared services for the lifetime of the native application. All mutable data
+/// lives beside the executable so a published copy can run directly from USB.
 /// </summary>
-public sealed class AppHost
+public sealed class AppHost : IDisposable
 {
     public string BaseDirectory { get; }
     public string ConfigDirectory { get; }
@@ -22,30 +20,27 @@ public sealed class AppHost
     public InventoryService Inventory { get; }
     public TweakHistoryService TweakHistory { get; }
 
-    /// <summary>
-    /// When true, every action that modifies the system is only simulated.
-    /// Read by CommandExecutor at execution time (lazy, so the flag can be
-    /// toggled from the Settings menu at runtime).
-    /// </summary>
+    /// <summary>When true, modifying commands are logged but never executed.</summary>
     public bool DryRun { get; set; }
 
     private AppHost(string baseDirectory)
     {
-        BaseDirectory = baseDirectory;
-        ConfigDirectory = ResolveDirectory(baseDirectory, "config");
-        LogDirectory = Path.Combine(baseDirectory, "logs");
+        BaseDirectory = Path.GetFullPath(baseDirectory);
+        ConfigDirectory = ResolveDirectory(BaseDirectory, "config");
+        LogDirectory = Path.Combine(BaseDirectory, "logs");
 
         Logger = new AppLogger(LogDirectory);
         Commands = new CommandExecutor(Logger, () => DryRun);
         RestorePoints = new RestorePointManager(Logger);
-        Config = new ConfigManager(ConfigDirectory);
+        Config = new ConfigManager(ConfigDirectory, Logger);
         Sensors = new SensorService(Logger);
         Inventory = new InventoryService(Logger);
         TweakHistory = new TweakHistoryService(LogDirectory);
 
-        Logger.Info($"WDigger started. Base directory: {BaseDirectory}");
+        Logger.Info($"WDigger native shell started. Base directory: {BaseDirectory}");
         Logger.Info($"Config directory: {ConfigDirectory}");
         Logger.Info($"Log directory: {LogDirectory}");
+        Logger.Info("Execution identity: Administrator");
         Logger.Info($"Dry-run mode: {DryRun}");
     }
 
@@ -59,11 +54,10 @@ public sealed class AppHost
             return direct;
         }
 
-        // When launched from "dotnet run" or Visual Studio the executable lives
-        // under bin/<configuration>/<tfm>. Walk up the tree to find the
-        // solution-root config folder so development works out of the box.
+        // Development fallback: find the repository-level config directory.
+        // Published single-file applications use the direct portable path.
         var directory = new DirectoryInfo(baseDirectory);
-        while (directory is not null && directory.Parent is not null)
+        while (directory.Parent is not null)
         {
             directory = directory.Parent;
             var candidate = Path.Combine(directory.FullName, relativePath);
@@ -75,4 +69,6 @@ public sealed class AppHost
 
         return direct;
     }
+
+    public void Dispose() => Logger.Dispose();
 }

@@ -1,15 +1,19 @@
+using WDigger.UI;
+
 namespace WDigger.Core;
 
 public static class App
 {
     public static int Run(string[] args)
     {
-        var dryRun = args.Contains("--dry-run") || args.Contains("-dryrun");
-        var host = AppHost.Create(AppDomain.CurrentDomain.BaseDirectory);
+        var dryRun = args.Contains("--dry-run", StringComparer.OrdinalIgnoreCase)
+            || args.Contains("-dryrun", StringComparer.OrdinalIgnoreCase);
+
+        using var host = AppHost.Create(AppContext.BaseDirectory);
         host.DryRun = dryRun;
 
-        var shell = new UI.Shell(host);
-        shell.Run();
+        using var shell = new Shell(host);
+        Application.Run(shell);
         return 0;
     }
 }

@@ -1,116 +1,58 @@
-using System.Linq;
-using Spectre.Console;
 using WDigger.Core;
+using WDigger.UI;
 
 namespace WDigger.Modules;
 
-/// <summary>
-/// Phase 5 module: driver backup with Export-WindowsDriver and driver
-/// enumeration/installation with pnputil, with live progress.
-/// </summary>
-public class DriversModule : IModule
+public sealed class DriversModule : IModule
 {
-    public string Name => "Drivers";
-    public string Description => "Driver backup, enumeration and installation.";
+    public string Name => "Controladores";
+    public string Description => "Copia de seguridad, inventario e instalación de controladores INF.";
 
-    public void Run(AppHost host)
+    public IReadOnlyList<ModuleAction> CreateActions(AppHost host) => new[]
     {
-        while (true)
+        new ModuleAction(
+            "Exportar todos los controladores",
+            "Guarda los controladores de terceros mediante Export-WindowsDriver.",
+            (context, token) => BackupDriversAsync(host, context, token),
+            changesSystem: true,
+            confirmation: "Se creará una copia de los controladores en la carpeta que selecciones."),
+        new ModuleAction(
+            "Listar controladores instalados",
+            "Ejecuta pnputil /enum-drivers y muestra su salida.",
+            (context, token) => context.RunCommandAsync("pnputil", "/enum-drivers", token)),
+        new ModuleAction(
+            "Instalar un paquete de controlador",
+            "Selecciona un archivo INF y lo instala mediante pnputil.",
+            (context, token) => AddDriverAsync(host, context, token),
+            changesSystem: true,
+            confirmation: "Instalar un controlador incorrecto puede dejar un dispositivo inutilizable.")
+    };
+
+    private static async Task BackupDriversAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
+    {
+        var initial = Path.Combine(host.BaseDirectory, "drivers-backup");
+        var destination = context.PickFolder("Selecciona la carpeta de destino de la copia", initial)
+            ?? context.Prompt("Exportar controladores", "Carpeta de destino:", initial);
+        if (destination is null)
         {
-            var choice = AnsiConsole.Prompt(new SelectionPrompt<string>()
-                .Title("Driver module")
-                .AddChoices(
-                    "Backup all drivers (Export-WindowsDriver)",
-                    "List installed drivers (pnputil /enum-drivers)",
-                    "Add a driver package (pnputil /add-driver)",
-                    "Back to main menu"));
-
-            switch (choice)
-            {
-                case "Backup all drivers (Export-WindowsDriver)":
-                    BackupDrivers(host);
-                    break;
-                case "List installed drivers (pnputil /enum-drivers)":
-                    host.Commands.Run("pnputil", "/enum-drivers");
-                    break;
-                case "Add a driver package (pnputil /add-driver)":
-                    AddDriver(host);
-                    break;
-                case "Back to main menu":
-                    return;
-            }
-
-            AnsiConsole.WriteLine();
-            AnsiConsole.MarkupLine("[grey]Press any key to return...[/]");
-            Console.ReadKey(true);
+            return;
         }
+
+        var path = Path.GetFullPath(destination);
+        var escaped = path.Replace("'", "''");
+        context.WriteLine($"Destino: {path}", OutputKind.Muted);
+        await context.RunCommandAsync("powershell",
+            $"-NoProfile -Command \"Export-WindowsDriver -Online -Destination '{escaped}' -Verbose\"", token);
     }
 
-    private static void BackupDrivers(AppHost host)
+    private static async Task AddDriverAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
     {
-        var destination = AnsiConsole.Ask<string>("Backup destination folder", "drivers-backup");
-        if (string.IsNullOrWhiteSpace(destination)) return;
-        if (!Confirm(host)) return;
-
-        var path = System.IO.Path.GetFullPath(destination);
-        AnsiConsole.MarkupLine($"[grey]Exporting drivers to {path} ...[/]");
-
-        AnsiConsole.Progress().Start(ctx =>
+        _ = host;
+        var inf = context.PickFile("Seleccionar controlador", "Controladores INF (*.inf)|*.inf|Todos los archivos (*.*)|*.*");
+        if (inf is null)
         {
-            var task = ctx.AddTask("Exporting drivers...", autoStart: true);
-            task.MaxValue = 100;
-
-            host.Commands.Run("powershell",
-                $"-Command \"Export-WindowsDriver -Online -Destination '{path}' -Verbose\"",
-                echoOutput: false,
-                onOutputLine: line =>
-                {
-                    task.Description = CommandExecutor.Shorten(line, 64);
-                    task.Increment(1);
-                    if (task.Value >= task.MaxValue)
-                    {
-                        task.Value = 0;
-                    }
-                });
-
-            task.Description = "Driver backup complete";
-            task.Value = task.MaxValue;
-        });
-
-        AnsiConsole.MarkupLine($"[green]Driver backup finished at {path} (simulated if dry-run mode is on).[/]");
-    }
-
-    private static void AddDriver(AppHost host)
-    {
-        var inf = AnsiConsole.Ask<string>("Path to the driver .inf file");
-        if (string.IsNullOrWhiteSpace(inf)) return;
-        if (!Confirm(host)) return;
-
-        AnsiConsole.Progress().Start(ctx =>
-        {
-            var task = ctx.AddTask($"Installing driver {inf}...", autoStart: true);
-            task.MaxValue = 100;
-
-            host.Commands.Run("pnputil", $"/add-driver \"{inf}\" /install",
-                echoOutput: false,
-                onOutputLine: line =>
-                {
-                    task.Description = CommandExecutor.Shorten(line, 64);
-                    task.Increment(1);
-                    if (task.Value >= task.MaxValue)
-                    {
-                        task.Value = 0;
-                    }
-                });
-
-            task.Description = "Driver installation complete";
-            task.Value = task.MaxValue;
-        });
-    }
-
-    private static bool Confirm(AppHost host)
-    {
-        AnsiConsole.MarkupLine(host.DryRun ? "[grey][DRY-RUN][/]" : "[red][LIVE - changes will be applied][/]");
-        return host.DryRun || AnsiConsole.Confirm("Apply this action on the real system?");
+            return;
+        }
+        await context.RunCommandAsync("pnputil", $"/add-driver \"{inf}\" /install", token);
     }
 }

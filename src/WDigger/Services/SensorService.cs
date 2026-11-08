@@ -32,10 +32,7 @@ public sealed class SensorService
                 IsNetworkEnabled = true,
                 IsStorageEnabled = true,
                 IsPsuEnabled = true,
-                IsTpmEnabled = true,
-                IsBatteryEnabled = true,
-                IsFanControllerEnabled = true,
-                IsHeatControllerEnabled = true
+                IsBatteryEnabled = true
             };
 
             computer.Open();
@@ -117,12 +114,10 @@ public sealed class SensorService
         SensorType.Fan => "RPM",
         SensorType.Voltage => "V",
         SensorType.Power => "W",
-        SensorType.Capacity => "bytes",
-        SensorType.Data => "bytes",
-        SensorType.Energy => "Wh",
-        SensorType.SmallData => "",
+        SensorType.Data => "B",
+        SensorType.Energy => "mWh",
         SensorType.Factor => "",
-        SensorType.Throughput => "",
+        SensorType.Throughput => "B/s",
         _ => ""
     };
 }
