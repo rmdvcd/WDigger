@@ -1,4 +1,4 @@
-using WDigger.UI;
+using WDigger.Core;
 
 namespace WDigger.Modules;
 

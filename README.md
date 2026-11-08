@@ -129,9 +129,13 @@ USB. Al ejecutarlo, acepta el aviso de UAC. Windows aplicará el manifiesto
 `requireAdministrator` incluso si el usuario hace doble clic normalmente.
 
 La publicación usa `SelfContained`, `PublishSingleFile`,
-`WindowsAppSDKSelfContained`, compresión y no recorta ensamblados
-(`PublishTrimmed=false`) para conservar la compatibilidad de WMI, WinUI 3 y
-LibreHardwareMonitor.
+`WindowsAppSDKSelfContained`, `WindowsPackageType=None`, `EnableMsixTooling` e
+`IncludeAllContentForSelfExtract` (propiedades requeridas por el Windows App SDK
+para ejecutables single-file no empaquetados), compresión y no recorta
+ensamblados (`PublishTrimmed=false`) para conservar la compatibilidad de WMI,
+WinUI 3 y LibreHardwareMonitor. En el primer arranque, el propio EXE extrae sus
+dependencias en una carpeta temporal (comportamiento normal del modo
+single-file de WinUI).
 
 ## CI
 
