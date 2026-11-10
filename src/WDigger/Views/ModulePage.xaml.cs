@@ -23,7 +23,7 @@ public sealed partial class ModulePage : UserControl
             var actions = entry.Module.CreateActions(shell.Host);
             ModuleBadge.Text = $"{actions.Count} acciones";
             ActionCards.ItemsSource = actions
-                .Select(action => new ActionCardViewModel(action, shell.RunActionAsync))
+                .Select(action => new ActionCardViewModel(action, shell.RunActionAsync, shell.TraceUi))
                 .ToList();
         }
         catch (Exception exception)

@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Input;
 using Windows.Graphics;
 using WDigger.Core;
 using WDigger.Modules;
@@ -59,6 +60,7 @@ public sealed partial class ShellWindow : Window
 
         Dialogs = new DialogService(this);
         _host = AppHost.Create(AppContext.BaseDirectory);
+        RootGrid.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler(RootGrid_PointerPressed), true);
         _settings = AppSettings.Load(_host.ConfigDirectory);
         _moduleIndex = ModuleCatalog.Create().ToDictionary(entry => entry.Tag, StringComparer.OrdinalIgnoreCase);
 
@@ -97,6 +99,23 @@ public sealed partial class ShellWindow : Window
         ShowWelcome();
     }
 
+    // Breadcrumbs are best effort: a logging failure must not break the UI.
+    // Record only control types/names, never input text or pointer coordinates.
+    internal void TraceUi(string message)
+    {
+        if (_closing) return;
+        try { _host.Logger.Info(message); }
+        catch { /* Logging must not interrupt an interaction. */ }
+    }
+
+    private void RootGrid_PointerPressed(object sender, PointerRoutedEventArgs args)
+    {
+        var source = args.OriginalSource;
+        var type = source?.GetType().Name ?? "unknown";
+        var name = (source as FrameworkElement)?.Name;
+        TraceUi($"UI pointer pressed: type={type}, name={(string.IsNullOrEmpty(name) ? "<unnamed>" : name)}");
+    }
+
     // ───────────────────────────── navigation ─────────────────────────────
 
     private void NavView_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
@@ -107,6 +126,7 @@ public sealed partial class ShellWindow : Window
         }
 
         var tag = item.Tag as string;
+        TraceUi($"Navigation selected: {tag ?? "<none>"}");
 
         if (tag == "theme")
         {
@@ -466,6 +486,7 @@ public sealed partial class ShellWindow : Window
 
     public async Task RunActionAsync(ModuleAction action)
     {
+        TraceUi($"Action requested: {action.Title}");
         lock (_operationLock)
         {
             if (_isBusy || _closing)
@@ -488,6 +509,7 @@ public sealed partial class ShellWindow : Window
                     "Ejecutar");
                 if (!confirmed)
                 {
+                    TraceUi($"Action confirmation declined: {action.Title}");
                     return;
                 }
             }
@@ -513,7 +535,9 @@ public sealed partial class ShellWindow : Window
 
             try
             {
+                TraceUi($"Action executing: {action.Title}");
                 await action.Execute(context, operation.Token);
+                TraceUi($"Action returned: {action.Title}; cancelled={operation.IsCancellationRequested}");
                 if (!operation.IsCancellationRequested)
                 {
                     SetStatus("Acción finalizada");

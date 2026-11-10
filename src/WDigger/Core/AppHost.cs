@@ -37,7 +37,7 @@ public sealed class AppHost : IDisposable
         Inventory = new InventoryService(Logger);
         TweakHistory = new TweakHistoryService(LogDirectory);
 
-        Logger.Info($"WDigger (WinUI) host created. Base directory: {BaseDirectory}");
+        Logger.Info($"WDigger (WinUI) host created. Process ID: {Environment.ProcessId}; base directory: {BaseDirectory}");
         Logger.Info($"Config directory: {ConfigDirectory}");
         Logger.Info($"Log directory: {LogDirectory}");
         Logger.Info("Execution identity: Administrator");

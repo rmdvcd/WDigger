@@ -54,6 +54,25 @@ botón de cancelación.
   `--dry-run`) registra las acciones de modificación sin ejecutarlas; persiste;
   se destaca con un aviso en el panel de control.
 
+## Registros y diagnóstico de cierres
+
+Cada ejecución crea `logs/WDigger_yyyyMMdd_HHmmss.log` junto al ejecutable.
+En una compilación Debug habitual se encuentra en
+`src/WDigger/bin/Debug/net10.0-windows10.0.19041.0/win-x64/logs/`.
+El registro incluye el ID del proceso, navegación, interacciones de puntero
+(tipo y nombre del control, sin texto introducido), etapas de acciones y salida
+completa de comandos. La ruta exacta también aparece en el panel de control y
+la salida de la aplicación. Las excepciones no controladas que se puedan capturar
+se escriben en `WDigger.crash.log` junto al ejecutable.
+
+Tras un cierre, comparte el registro de sesión más reciente y, si existe,
+`WDigger.crash.log`, junto con la hora y el evento de Windows correspondiente.
+Revisa y oculta datos sensibles antes de compartirlos: la salida de comandos y
+las rutas pueden contener información personal. Un desbordamiento de pila o un
+fallo nativo puede terminar el proceso sin que se escriba una excepción; las
+últimas líneas solo indican el contexto previo, no necesariamente la causa. En
+ese caso puede ser necesario un volcado de memoria con la pila de llamadas.
+
 ## Stack
 
 | Capa | Tecnología |
