@@ -20,8 +20,15 @@ botón de cancelación.
 
 - **Fluent Design nativo:** controles WinUI 3, fuente Segoe UI Variable, Mica,
   DPI por monitor y compatibilidad con Windows 10/11.
+- **Estados de ejecución en tarjetas:** las tarjetas muestran «Ejecutando…»
+  mientras se procesa una acción y se deshabilitan para evitar doble ejecución.
+- **Timeout de comandos:** los comandos que superan los 30 minutos se finalizan
+  automáticamente para evitar bloqueos indefinidos.
+- **Manejo robusto de excepciones:** todos los módulos capturan errores de WMI,
+  archivos y red sin que la aplicación se cierre.
 - **Panel de control:** resumen del sistema (SO, CPU, memoria, disco C:),
-  acciones rápidas, ubicaciones de datos y registro de auditoría.
+  sensores en tiempo real, acciones rápidas, ubicaciones de datos y registro de
+  auditoría.
 - **Tema claro/oscuro/automático:** se cicla desde el pie de navegación y se
   guarda en `config/ui-settings.json`.
 - **Panel de salida integrado:** stdout/stderr en vivo con colores, copia al
@@ -51,7 +58,7 @@ botón de cancelación.
 
 | Capa | Tecnología |
 |---|---|
-| Lenguaje / runtime | C# 12, .NET 8, Windows x64 |
+| Lenguaje / runtime | C# 12, .NET 10, Windows x64 |
 | Interfaz | WinUI 3 (Windows App SDK 1.8, self-contained), Fluent Design |
 | Sensores | LibreHardwareMonitorLib |
 | Inventario / SMART / batería / BIOS | System.Management (WMI) |
@@ -80,7 +87,7 @@ src/WDigger/
 
 | Módulo | Funciones |
 |---|---|
-| Panel de control | Resumen del sistema, acciones rápidas, carpetas de datos y registro |
+| Panel de control | Resumen del sistema, sensores en tiempo real, acciones rápidas, carpetas de datos y registro |
 | Hardware | Inventario WMI, monitor de sensores, discos y batería |
 | Reparación del sistema | SFC, DISM, CHKDSK, Windows Update y caché de Winget |
 | Software | Instalación Winget/Chocolatey, búsqueda, inventario y Appx |
@@ -141,6 +148,44 @@ single-file de WinUI).
 `windows-latest` con cada push y pull request, verifica que el artefacto es un
 único `WDigger.exe` con el manifiesto elevador incrustado, y lo sube como
 artefacto.
+
+## Cambios de la versión 3.0
+
+- **Actualizado a .NET 10 y C# 12.** Mejoras de rendimiento y seguridad del runtime.
+- **Tarjetas de acción con estado de ejecución:** indicador visual «Ejecutando…»
+  y botón deshabilitado durante el procesamiento.
+- **Timeout de comandos de 30 minutos:** previene que procesos colgados bloqueen
+  la interfaz de usuario.
+- **Manejo de excepciones no observadas de TaskScheduler:** los errores en tareas
+  en segundo plano se registran sin cerrar la aplicación.
+- **Validación de entradas de red:** direcciones IP, máscaras y pasarelas se
+  validan antes de ejecutar comandos netsh.
+- **Validación de nombre de equipo:** máximo 15 caracteres, alfanumérico y guiones.
+- **Mejor manejo de rutas con espacios:** rutas de Acronis, controladores y
+  copias de seguridad se escapan correctamente.
+- **WMI failures degradados a "n/a":** consultas WMI fallidas no bloquean el
+  dashboard ni los módulos de dispositivos/BIOS.
+- **SensorService robusto:** fallos de sensores individuales no afectan la
+  lectura de otros sensores.
+
+## Cambios de la versión 3.0
+
+- **Actualizado a .NET 10 y C# 12.** Mejoras de rendimiento y seguridad del runtime.
+- **Tarjetas de acción con estado de ejecución:** indicador visual «Ejecutando…»
+  y botón deshabilitado durante el procesamiento.
+- **Timeout de comandos de 30 minutos:** previene que procesos colgados bloqueen
+  la interfaz de usuario.
+- **Manejo de excepciones no observadas de TaskScheduler:** los errores en tareas
+  en segundo plano se registran sin cerrar la aplicación.
+- **Validación de entradas de red:** direcciones IP, máscaras y pasarelas se
+  validan antes de ejecutar comandos netsh.
+- **Validación de nombre de equipo:** máximo 15 caracteres, alfanumérico y guiones.
+- **Mejor manejo de rutas con espacios:** rutas de Acronis, controladores y
+  copias de seguridad se escapan correctamente.
+- **WMI failures degradados a "n/a":** consultas WMI fallidas no bloquean el
+  dashboard ni los módulos de dispositivos/BIOS.
+- **SensorService robusto:** fallos de sensores individuales no afectan la
+  lectura de otros sensores.
 
 ## Cambios de la versión 2.0
 

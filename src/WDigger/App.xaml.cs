@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Security.Principal;
+using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
 using WDigger.Core;
 using WDigger.UI;
@@ -31,6 +32,12 @@ public partial class App : Application
                 CrashLog.Write(exception);
             }
         };
+
+        TaskScheduler.UnobservedTaskException += (_, e) =>
+        {
+            CrashLog.Write(e.Exception);
+            e.SetObserved();
+        };
     }
 
     public App()
@@ -54,10 +61,17 @@ public partial class App : Application
         catch (Exception exception)
         {
             CrashLog.Write(exception);
-            NativeMessageBox.Show(
-                $"WDigger no puede continuar.\n\n{exception.Message}\n\nConsulta WDigger.crash.log junto al ejecutable para obtener más detalles.",
-                "Error de WDigger",
-                NativeMessageBox.Icon.Error);
+            try
+            {
+                NativeMessageBox.Show(
+                    $"WDigger no puede continuar.\n\n{exception.Message}\n\nConsulta WDigger.crash.log junto al ejecutable para obtener más detalles.",
+                    "Error de WDigger",
+                    NativeMessageBox.Icon.Error);
+            }
+            catch
+            {
+                // Si el cuadro de diálogo falla, al menos el log queda escrito.
+            }
             Environment.Exit(1);
         }
     }
@@ -112,10 +126,17 @@ public partial class App : Application
         catch (Exception exception)
         {
             CrashLog.Write(exception);
-            NativeMessageBox.Show(
-                $"WDigger no puede continuar.\n\n{exception.Message}",
-                "Error de WDigger",
-                NativeMessageBox.Icon.Error);
+            try
+            {
+                NativeMessageBox.Show(
+                    $"WDigger no puede continuar.\n\n{exception.Message}",
+                    "Error de WDigger",
+                    NativeMessageBox.Icon.Error);
+            }
+            catch
+            {
+                // Best effort.
+            }
             Environment.Exit(1);
         }
     }

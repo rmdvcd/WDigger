@@ -1,5 +1,5 @@
+using System.Net;
 using WDigger.Core;
-using WDigger.Models;
 using WDigger.UI;
 
 namespace WDigger.Modules;
@@ -35,11 +35,11 @@ public sealed class AdvancedNetworkModule : IModule
         var adapter = await context.PromptAsync("IP estática", "Nombre exacto del adaptador:");
         if (adapter is null) return;
         var ip = await context.PromptAsync("IP estática", "Dirección IP (por ejemplo, 192.168.1.50):");
-        if (ip is null) return;
+        if (ip is null || !IsValidIp(ip)) return;
         var mask = await context.PromptAsync("IP estática", "Máscara de subred:", "255.255.255.0");
-        if (mask is null) return;
+        if (mask is null || !IsValidIp(mask)) return;
         var gateway = await context.PromptAsync("IP estática", "Puerta de enlace predeterminada:");
-        if (gateway is null) return;
+        if (gateway is null || !IsValidIp(gateway)) return;
 
         await context.RunCommandAsync("netsh",
             $"interface ip set address name=\"{adapter}\" static {ip} {mask} {gateway}", token);
@@ -80,10 +80,22 @@ public sealed class AdvancedNetworkModule : IModule
         _ = host;
         var newName = await context.PromptAsync("Cambiar nombre del equipo", "Nuevo nombre:");
         if (newName is null) return;
+        if (newName.Length > 15 || newName.Any(c => !char.IsLetterOrDigit(c) && c != '-'))
+        {
+            context.WriteLine("El nombre del equipo no es válido (máximo 15 caracteres, alfanumérico y guiones).",
+                OutputKind.Warning);
+            return;
+        }
         var escaped = newName.Replace("'", "''");
         await context.RunCommandAsync("powershell",
             $"-NoProfile -Command \"Rename-Computer -NewName '{escaped}' -Restart:$false\"", token);
         context.WriteLine("Nombre programado. Reinicia Windows para aplicarlo.", OutputKind.Success);
+    }
+
+    private static bool IsValidIp(string? ip)
+    {
+        if (string.IsNullOrWhiteSpace(ip)) return false;
+        return IPAddress.TryParse(ip.Trim(), out _);
     }
 
     private static Task<CommandResult> Run(

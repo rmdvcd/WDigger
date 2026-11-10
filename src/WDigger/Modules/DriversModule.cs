@@ -1,3 +1,4 @@
+using System.IO;
 using WDigger.Core;
 using WDigger.UI;
 
@@ -38,9 +39,29 @@ public sealed class DriversModule : IModule
             return;
         }
 
-        var path = Path.GetFullPath(destination);
-        var escaped = path.Replace("'", "''");
+        string path;
+        try
+        {
+            path = Path.GetFullPath(destination);
+        }
+        catch (Exception exception)
+        {
+            context.WriteLine($"La ruta de destino no es válida: {exception.Message}", OutputKind.Error);
+            return;
+        }
+
         context.WriteLine($"Destino: {path}", OutputKind.Muted);
+        try
+        {
+            Directory.CreateDirectory(path);
+        }
+        catch (Exception exception)
+        {
+            context.WriteLine($"No se pudo crear la carpeta de destino: {exception.Message}", OutputKind.Error);
+            return;
+        }
+
+        var escaped = path.Replace("'", "''");
         await context.RunCommandAsync("powershell",
             $"-NoProfile -Command \"Export-WindowsDriver -Online -Destination '{escaped}' -Verbose\"", token);
     }
@@ -48,7 +69,8 @@ public sealed class DriversModule : IModule
     private static async Task AddDriverAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
     {
         _ = host;
-        var inf = await context.PickFileAsync("Seleccionar controlador", "Controladores INF (*.inf)|*.inf|Todos los archivos (*.*)|*.*");
+        var inf = await context.PickFileAsync("Seleccionar controlador",
+            "Controladores INF (*.inf)|*.inf|Todos los archivos (*.*)|*.*");
         if (inf is null)
         {
             return;

@@ -13,6 +13,9 @@ public sealed class CommandExecutor
     private readonly AppLogger _logger;
     private readonly Func<bool> _isDryRun;
 
+    /// <summary>Maximum time a command is allowed to run before being killed.</summary>
+    private static readonly TimeSpan DefaultCommandTimeout = TimeSpan.FromMinutes(30);
+
     public CommandExecutor(AppLogger logger, Func<bool> isDryRun)
     {
         _logger = logger;
@@ -93,7 +96,19 @@ public sealed class CommandExecutor
                 onOutputLine?.Invoke(line);
             }
 
-            await process.WaitForExitAsync(cancellationToken);
+            // Wait for exit with a hard timeout so a hung process cannot block the app forever.
+            var exitTask = process.WaitForExitAsync(CancellationToken.None);
+            var timeoutTask = Task.Delay(DefaultCommandTimeout, CancellationToken.None);
+            var completed = await Task.WhenAny(exitTask, timeoutTask);
+            if (completed != exitTask)
+            {
+                // Process exceeded the timeout; kill it and its tree.
+                _logger.Warn($"Command timed out after {DefaultCommandTimeout.TotalMinutes:F0} minutes: {commandLine}");
+                TryKill(process);
+                await exitTask; // Let it transition to exited.
+                throw new TimeoutException($"El comando superó el tiempo de espera ({DefaultCommandTimeout.TotalMinutes:F0} min).");
+            }
+
             standardError = await readError;
             standardOutput = string.Join(Environment.NewLine, stdoutLines);
             exitCode = process.ExitCode;
@@ -110,6 +125,19 @@ public sealed class CommandExecutor
                 try { await readError; } catch { /* Best effort. */ }
             }
             _logger.Warn($"Command cancelled by user: {commandLine}");
+            throw;
+        }
+        catch (TimeoutException)
+        {
+            TryKill(process);
+            if (process is not null)
+            {
+                try { await process.WaitForExitAsync(CancellationToken.None); } catch { /* Best effort. */ }
+            }
+            if (readError is not null)
+            {
+                try { await readError; } catch { /* Best effort. */ }
+            }
             throw;
         }
         catch (Exception exception)

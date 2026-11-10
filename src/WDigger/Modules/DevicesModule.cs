@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Management;
 using WDigger.Core;
 using WDigger.UI;

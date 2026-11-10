@@ -53,17 +53,25 @@ public sealed class EventLogBiosModule : IModule
     private static List<string[]> QueryWmi(string wql)
     {
         var rows = new List<string[]>();
-        using var searcher = new ManagementObjectSearcher(wql);
-        using var collection = searcher.Get();
-        foreach (ManagementObject item in collection)
+        try
         {
-            using (item)
+            using var searcher = new ManagementObjectSearcher(wql);
+            using var collection = searcher.Get();
+            foreach (ManagementObject item in collection)
             {
-                foreach (PropertyData property in item.Properties)
+                using (item)
                 {
-                    rows.Add(new[] { property.Name, property.Value?.ToString() ?? "n/a" });
+                    foreach (PropertyData property in item.Properties)
+                    {
+                        rows.Add(new[] { property.Name, property.Value?.ToString() ?? "n/a" });
+                    }
                 }
             }
+        }
+        catch (Exception exception)
+        {
+            // WMI failures are logged and degraded gracefully.
+            return new List<string[]> { ["Error", exception.Message] };
         }
         return rows;
     }
