@@ -55,11 +55,13 @@ public sealed class ActionCardViewModel : INotifyPropertyChanged
             {
                 _isRunning = value;
                 OnPropertyChanged();
+                OnPropertyChanged(nameof(RunningBadgeBackground));
+                OnPropertyChanged(nameof(RunningBadgeText));
             }
         }
     }
 
-    public Microsoft.UI.Xaml.Media.Brush RunningBadgeBackground => IsRunning ? RunningBadgeBackground : BadgeBackground;
+    public Microsoft.UI.Xaml.Media.Brush RunningBadgeBackground => IsRunning ? RunningBackground : BadgeBackground;
     public string RunningBadgeText => IsRunning ? "Ejecutando…" : BadgeText;
 
     public async Task ExecuteAsync()
