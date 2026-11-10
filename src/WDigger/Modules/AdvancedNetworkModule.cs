@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Sockets;
 using WDigger.Core;
 using WDigger.Models;
 using WDigger.UI;
@@ -36,14 +37,17 @@ public sealed class AdvancedNetworkModule : IModule
         var adapter = await context.PromptAsync("IP estática", "Nombre exacto del adaptador:");
         if (adapter is null) return;
         var ip = await context.PromptAsync("IP estática", "Dirección IP (por ejemplo, 192.168.1.50):");
-        if (ip is null || !IsValidIp(ip)) return;
+        if (ip is null) return;
+        if (!IsValidIp(ip)) throw new ArgumentException("La dirección debe ser IPv4 válida.");
         var mask = await context.PromptAsync("IP estática", "Máscara de subred:", "255.255.255.0");
-        if (mask is null || !IsValidIp(mask)) return;
+        if (mask is null) return;
+        if (!IsValidMask(mask)) throw new ArgumentException("La máscara IPv4 no es válida o no es contigua.");
         var gateway = await context.PromptAsync("IP estática", "Puerta de enlace predeterminada:");
-        if (gateway is null || !IsValidIp(gateway)) return;
+        if (gateway is null) return;
+        if (!IsValidIp(gateway)) throw new ArgumentException("La puerta de enlace debe ser IPv4 válida.");
 
-        await context.RunCommandAsync("netsh",
-            $"interface ip set address name=\"{adapter}\" static {ip} {mask} {gateway}", token);
+        if (!await context.ConfirmAsync("Confirmar IP", $"Se cambiará la IP de «{adapter}» a {ip}, máscara {mask}, puerta de enlace {gateway}. Esto puede desconectar sesiones remotas. ¿Continuar?")) return;
+        await context.RunArgumentsAsync("netsh", new[] { "interface", "ip", "set", "address", $"name={adapter}", "static", ip, mask, gateway }, token);
     }
 
     private static async Task SetDhcpAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
@@ -51,8 +55,9 @@ public sealed class AdvancedNetworkModule : IModule
         _ = host;
         var adapter = await context.PromptAsync("Configurar DHCP", "Nombre exacto del adaptador:");
         if (adapter is null) return;
-        await context.RunCommandAsync("netsh", $"interface ip set address name=\"{adapter}\" dhcp", token);
-        await context.RunCommandAsync("netsh", $"interface ip set dns name=\"{adapter}\" dhcp", token);
+        if (!await context.ConfirmAsync("Confirmar DHCP", $"Se cambiarán la IP y DNS de «{adapter}» a DHCP. Esto puede desconectar sesiones remotas. ¿Continuar?")) return;
+        await context.RunArgumentsAsync("netsh", new[] { "interface", "ip", "set", "address", $"name={adapter}", "dhcp" }, token);
+        await context.RunArgumentsAsync("netsh", new[] { "interface", "ip", "set", "dns", $"name={adapter}", "dhcp" }, token);
     }
 
     private static async Task TraceRouteAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
@@ -61,7 +66,7 @@ public sealed class AdvancedNetworkModule : IModule
         var target = await context.PromptAsync("Trazar ruta", "Nombre de host o dirección IP:");
         if (target is not null)
         {
-            await context.RunCommandAsync("tracert", target, token);
+            await context.RunArgumentsAsync("tracert", new[] { target }, token);
         }
     }
 
@@ -71,9 +76,9 @@ public sealed class AdvancedNetworkModule : IModule
         var proxy = await context.PromptAsync("Proxy WinHTTP",
             "Servidor (por ejemplo, proxy.empresa.com:8080). Déjalo vacío para restablecer:", allowEmpty: true);
         if (proxy is null) return;
-        await context.RunCommandAsync("netsh", string.IsNullOrWhiteSpace(proxy)
-            ? "winhttp reset proxy"
-            : $"winhttp set proxy {proxy}", token);
+        await context.RunArgumentsAsync("netsh", string.IsNullOrWhiteSpace(proxy)
+            ? new[] { "winhttp", "reset", "proxy" }
+            : new[] { "winhttp", "set", "proxy", proxy }, token);
     }
 
     private static async Task RenameComputerAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
@@ -88,15 +93,23 @@ public sealed class AdvancedNetworkModule : IModule
             return;
         }
         var escaped = newName.Replace("'", "''");
-        await context.RunCommandAsync("powershell",
-            $"-NoProfile -Command \"Rename-Computer -NewName '{escaped}' -Restart:$false\"", token);
-        context.WriteLine("Nombre programado. Reinicia Windows para aplicarlo.", OutputKind.Success);
+        await context.RunPowerShellAsync($"Rename-Computer -NewName '{escaped}' -Restart:$false", token);
+        if (!host.DryRun) context.WriteLine("Nombre programado. Reinicia Windows para aplicarlo.", OutputKind.Success);
     }
 
     private static bool IsValidIp(string? ip)
     {
         if (string.IsNullOrWhiteSpace(ip)) return false;
-        return IPAddress.TryParse(ip.Trim(), out _);
+        return IPAddress.TryParse(ip.Trim(), out var address) && address.AddressFamily == AddressFamily.InterNetwork;
+    }
+
+    private static bool IsValidMask(string mask)
+    {
+        if (!IsValidIp(mask)) return false;
+        var bytes = IPAddress.Parse(mask.Trim()).GetAddressBytes();
+        uint value = ((uint)bytes[0] << 24) | ((uint)bytes[1] << 16) | ((uint)bytes[2] << 8) | bytes[3];
+        var inverse = ~value;
+        return (inverse & unchecked(inverse + 1)) == 0;
     }
 
     private static Task<CommandResult> Run(

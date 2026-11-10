@@ -18,7 +18,7 @@ public sealed class DiskModule : IModule
             confirmation: "Se eliminarán archivos temporales. Cierra las aplicaciones abiertas antes de continuar."),
         new ModuleAction("Analizar una unidad", "Ejecuta CHKDSK /scan /perf en la letra de unidad indicada.",
             (context, token) => ScanDriveAsync(host, context, token), changesSystem: true,
-            confirmation: "El análisis puede detectar errores y programar operaciones para el próximo reinicio.")
+            confirmation: "El análisis puede detectar errores y programar operaciones para el próximo reinicio.", canCancel: false)
     };
 
     private static Task<CommandResult> ShowDiskSpaceAsync(

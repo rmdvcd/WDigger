@@ -27,9 +27,12 @@ public sealed class ActionCardViewModel : INotifyPropertyChanged
         _trace = trace;
         Action = action;
         Title = action.Title;
-        Description = action.Description;
+        Description = action.UnavailableReason is not null ? $"{action.Description}\nNo disponible: {action.UnavailableReason}"
+            : action.ChangesSystem && !action.AllowedInElevatedSession ? $"{action.Description}\nSolo simulación: ejecución real pendiente de revisión."
+            : action.ChangesSystem ? $"{action.Description}\nEjecución real: requiere abrir WDigger como administrador."
+            : action.Description;
         ChangesSystem = action.ChangesSystem;
-        BadgeText = action.ChangesSystem ? "Modifica el sistema" : "Solo lectura";
+        BadgeText = action.ChangesSystem ? "Modifica el sistema" : action.WritesFile ? "Guarda un archivo" : "Solo lectura";
         BadgeBackground = action.ChangesSystem ? DangerBackground : SafeBackground;
         BadgeForeground = action.ChangesSystem ? DangerForeground : SafeForeground;
         _run = run;
@@ -44,6 +47,7 @@ public sealed class ActionCardViewModel : INotifyPropertyChanged
     public string Title { get; }
     public string Description { get; }
     public bool ChangesSystem { get; }
+    public bool IsAvailable => Action.UnavailableReason is null;
     public string BadgeText { get; }
     public Microsoft.UI.Xaml.Media.Brush BadgeBackground { get; }
     public Microsoft.UI.Xaml.Media.Brush BadgeForeground { get; }

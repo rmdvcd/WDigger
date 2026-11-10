@@ -1,4 +1,6 @@
+using System.Security.Principal;
 using WDigger.Services;
+using WDigger.Diagnostics;
 
 namespace WDigger.Core;
 
@@ -19,28 +21,43 @@ public sealed class AppHost : IDisposable
     public SensorService Sensors { get; }
     public InventoryService Inventory { get; }
     public TweakHistoryService TweakHistory { get; }
+    public DiagnosticService Diagnostics { get; } = new();
+    public DiagnosticReport? LatestDiagnosticReport { get; set; }
 
     /// <summary>When true, modifying commands are logged but never executed.</summary>
     public bool DryRun { get; set; }
+
+    public bool IsAdministrator
+    {
+        get
+        {
+            try
+            {
+                using var identity = WindowsIdentity.GetCurrent();
+                return new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator);
+            }
+            catch { return false; }
+        }
+    }
 
     private AppHost(string baseDirectory)
     {
         BaseDirectory = Path.GetFullPath(baseDirectory);
         ConfigDirectory = ResolveDirectory(BaseDirectory, "config");
-        LogDirectory = Path.Combine(BaseDirectory, "logs");
-
-        Logger = new AppLogger(LogDirectory);
+        var portableLogDirectory = Path.Combine(BaseDirectory, "logs");
+        Logger = new AppLogger(portableLogDirectory);
+        LogDirectory = Logger.LogDirectory ?? portableLogDirectory;
         Commands = new CommandExecutor(Logger, () => DryRun);
         RestorePoints = new RestorePointManager(Logger);
         Config = new ConfigManager(ConfigDirectory, Logger);
         Sensors = new SensorService(Logger);
         Inventory = new InventoryService(Logger);
-        TweakHistory = new TweakHistoryService(LogDirectory);
+        TweakHistory = new TweakHistoryService(portableLogDirectory);
 
         Logger.Info($"WDigger (WinUI) host created. Process ID: {Environment.ProcessId}; base directory: {BaseDirectory}");
         Logger.Info($"Config directory: {ConfigDirectory}");
         Logger.Info($"Log directory: {LogDirectory}");
-        Logger.Info("Execution identity: Administrator");
+        Logger.Info($"Execution identity: {(IsAdministrator ? "Administrator" : "Standard user")}");
         Logger.Info($"Dry-run mode: {DryRun}");
     }
 

@@ -7,6 +7,7 @@ using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Input;
 using Windows.Graphics;
+using Windows.System;
 using WDigger.Core;
 using WDigger.Modules;
 using WDigger.Views;
@@ -26,7 +27,6 @@ public sealed partial class ShellWindow : Window
     private readonly AppSettings _settings;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly IReadOnlyDictionary<string, ModuleCatalog.Entry> _moduleIndex;
-    private readonly Dictionary<OutputKind, SolidColorBrush> _outputBrushes;
     private readonly List<string> _outputPlain = new();
 
     private CancellationTokenSource? _operationCts;
@@ -34,6 +34,8 @@ public sealed partial class ShellWindow : Window
     private bool _isBusy;
     private bool _closing;
     private bool _outputCollapsed;
+    private bool _currentChangesSystem;
+    private bool _currentCanCancel;
     private readonly object _operationLock = new();
 
     public DialogService Dialogs { get; }
@@ -60,6 +62,7 @@ public sealed partial class ShellWindow : Window
 
         Dialogs = new DialogService(this);
         _host = AppHost.Create(AppContext.BaseDirectory);
+        PrivilegeLabel.Text = _host.IsAdministrator ? "ADMINISTRADOR" : "SIN ELEVAR";
         RootGrid.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler(RootGrid_PointerPressed), true);
         _settings = AppSettings.Load(_host.ConfigDirectory);
         _moduleIndex = ModuleCatalog.Create().ToDictionary(entry => entry.Tag, StringComparer.OrdinalIgnoreCase);
@@ -70,22 +73,15 @@ public sealed partial class ShellWindow : Window
             argument.Equals("-dryrun", StringComparison.OrdinalIgnoreCase));
         _host.DryRun = dryRunArgument || _settings.DryRun;
 
-        _outputBrushes = new Dictionary<OutputKind, SolidColorBrush>
-        {
-            [OutputKind.Success] = Brush(0x6C, 0xCB, 0x5F),
-            [OutputKind.Warning] = Brush(0xFF, 0xC8, 0x3D),
-            [OutputKind.Error] = Brush(0xFF, 0x99, 0xA4),
-            [OutputKind.Command] = Brush(0x8A, 0xC9, 0xFF),
-            [OutputKind.Muted] = Brush(0x8A, 0x97, 0xA5)
-        };
-
         ApplyTheme(_settings.Theme, persist: false);
         UpdateThemeLabel();
 
         DryRunSwitch.IsOn = _host.DryRun;
         DryRunSwitch.Toggled += DryRunSwitch_Toggled;
 
+        AppWindow.Closing += OnAppWindowClosing;
         Closed += OnClosed;
+        RegisterKeyboardShortcuts();
 
         var dashboard = NavView.MenuItems.OfType<NavigationViewItem>()
             .FirstOrDefault(item => string.Equals(item.Tag as string, "dashboard", StringComparison.OrdinalIgnoreCase));
@@ -286,6 +282,7 @@ public sealed partial class ShellWindow : Window
 
         try
         {
+            var wasAtEnd = OutputScroller.ScrollableHeight - OutputScroller.VerticalOffset < 4;
             _outputPlain.Add(message);
             if (_outputPlain.Count > 1500)
             {
@@ -293,12 +290,8 @@ public sealed partial class ShellWindow : Window
             }
 
             var paragraph = new Paragraph();
-            var run = new Run { Text = message.Length == 0 ? " " : message };
-            if (kind != OutputKind.Info && _outputBrushes.TryGetValue(kind, out var brush))
-            {
-                run.Foreground = brush;
-            }
-
+            var prefix = kind switch { OutputKind.Error => "[Error] ", OutputKind.Warning => "[Aviso] ", OutputKind.Success => "[OK] ", _ => "" };
+            var run = new Run { Text = message.Length == 0 ? " " : prefix + message };
             paragraph.Inlines.Add(run);
             OutputText.Blocks.Add(paragraph);
             while (OutputText.Blocks.Count > 800)
@@ -307,7 +300,7 @@ public sealed partial class ShellWindow : Window
             }
 
             OutputScroller.UpdateLayout();
-            OutputScroller.ChangeView(null, OutputScroller.ScrollableHeight, null, disableAnimation: true);
+            if (wasAtEnd) OutputScroller.ChangeView(null, OutputScroller.ScrollableHeight, null, disableAnimation: true);
         }
         catch
         {
@@ -467,19 +460,71 @@ public sealed partial class ShellWindow : Window
         }
     }
 
-    private void CancelOperationButton_Click(object sender, RoutedEventArgs e)
+    private async void CancelOperationButton_Click(object sender, RoutedEventArgs e) => await RequestCancellationAsync();
+
+    private async Task RequestCancellationAsync()
     {
-        lock (_operationLock)
+        CancellationTokenSource? operation;
+        lock (_operationLock) operation = _operationCts;
+        if (operation is null || operation.IsCancellationRequested || !_currentCanCancel) return;
+
+        CancelOperationButton.IsEnabled = false;
+        if (_currentChangesSystem)
         {
-            if (_operationCts is null || _operationCts.IsCancellationRequested)
+            var confirmed = await Dialogs.ConfirmAsync("Cancelar operación",
+                "Interrumpir una operación que modifica Windows puede dejar cambios parciales o el sistema en un estado inconsistente. Se recomienda esperar. ¿Interrumpir de todos modos?",
+                "Interrumpir");
+            if (!confirmed)
             {
+                if (ReferenceEquals(_operationCts, operation)) CancelOperationButton.IsEnabled = true;
                 return;
             }
-
-            CancelOperationButton.IsEnabled = false;
-            SetStatus("Cancelando; espera a que finalice el proceso...");
-            _operationCts.Cancel();
         }
+        lock (_operationLock)
+        {
+            if (!ReferenceEquals(_operationCts, operation)) return;
+            SetStatus("Cancelando; revisa si hay cambios parciales...");
+            operation.Cancel();
+        }
+    }
+
+    private void RegisterKeyboardShortcuts()
+    {
+        AddShortcut(VirtualKey.F5, VirtualKeyModifiers.None, async () =>
+        {
+            if (_isBusy || _closing) return;
+            NavigateToTag("diagnostics");
+            var action = _moduleIndex["diagnostics"].Module.CreateActions(_host)[0];
+            await RunActionAsync(action);
+        });
+        AddShortcut(VirtualKey.R, VirtualKeyModifiers.Control, async () =>
+        {
+            if (_isBusy) return;
+            await Dialogs.ShowMessageAsync("Reparaciones", "Abre Reparación del sistema para seleccionar una operación. Algunas requieren una sesión abierta como administrador; las demás siguen bloqueadas. F5 inicia el análisis.");
+        });
+        AddShortcut(VirtualKey.L, VirtualKeyModifiers.Control, () =>
+        {
+            SetOutputCollapsed(!_outputCollapsed);
+            return Task.CompletedTask;
+        });
+        AddShortcut(VirtualKey.Escape, VirtualKeyModifiers.None, RequestCancellationAsync);
+        AddShortcut(VirtualKey.F1, VirtualKeyModifiers.None, async () =>
+        {
+            if (_isBusy) return;
+            await Dialogs.ShowMessageAsync("Ayuda", "F5: analizar; Ctrl+R: reparaciones; Ctrl+L: mostrar u ocultar salida; Esc: cancelar si está permitido; F1: ayuda. Las comprobaciones no disponibles no significan que Windows esté sano.");
+        });
+    }
+
+    private void AddShortcut(VirtualKey key, VirtualKeyModifiers modifiers, Func<Task> callback)
+    {
+        var accelerator = new KeyboardAccelerator { Key = key, Modifiers = modifiers };
+        accelerator.Invoked += async (_, args) =>
+        {
+            args.Handled = true;
+            try { await callback(); }
+            catch (Exception exception) { TraceUi($"Keyboard shortcut failed: {exception.Message}"); }
+        };
+        RootGrid.KeyboardAccelerators.Add(accelerator);
     }
 
     // ───────────────────────────── action execution ─────────────────────────────
@@ -487,6 +532,24 @@ public sealed partial class ShellWindow : Window
     public async Task RunActionAsync(ModuleAction action)
     {
         TraceUi($"Action requested: {action.Title}");
+        if (action.UnavailableReason is not null)
+        {
+            AppendOutput($"Acción no disponible: {action.UnavailableReason}", OutputKind.Warning);
+            return;
+        }
+        var decision = OperationPolicy.Evaluate(action.ChangesSystem, _host.DryRun,
+            action.AllowedInElevatedSession, _host.IsAdministrator, _host.Logger.IsPersistent);
+        if (decision != OperationDecision.Allowed)
+        {
+            var (title, reason) = decision switch
+            {
+                OperationDecision.BlockedPendingReview => ("Acción no disponible", "Esta operación sigue suspendida hasta completar su revisión de seguridad y recuperación. Puedes usar la simulación."),
+                OperationDecision.AdministratorRequired => ("Permisos necesarios", "Para esta operación concreta, cierra WDigger y ábrelo mediante Ejecutar como administrador. Esto elevará toda la aplicación, no solo la reparación. La simulación no requiere elevación."),
+                _ => ("Registro no disponible", "La operación real está bloqueada porque no se puede guardar el registro. Libera espacio o usa una carpeta de datos escribible.")
+            };
+            await Dialogs.ShowMessageAsync(title, reason);
+            return;
+        }
         lock (_operationLock)
         {
             if (_isBusy || _closing)
@@ -497,16 +560,20 @@ public sealed partial class ShellWindow : Window
             _isBusy = true;
         }
 
+        DryRunSwitch.IsEnabled = false;
+        var simulate = action.ChangesSystem && _host.DryRun;
+        _currentChangesSystem = action.ChangesSystem && !simulate;
+        _currentCanCancel = action.CanCancel;
         try
         {
-            if (action.ChangesSystem && !_host.DryRun)
+            if (action.ChangesSystem && !simulate)
             {
                 var message = action.Confirmation
                     ?? "Esta acción puede modificar Windows. Revisa la descripción antes de continuar.";
                 var confirmed = await Dialogs.ConfirmAsync(
                     "Confirmar cambios en el sistema",
-                    $"{message}\n\n¿Quieres ejecutar «{action.Title}» en el sistema real?",
-                    "Ejecutar");
+                    $"{message}\n\nEsta operación puede ser irreversible; un punto de restauración no sustituye una copia de seguridad ni garantiza el rollback. No apagues el equipo durante su ejecución.\n\n¿Quieres ejecutar «{action.Title}» en el sistema real?",
+                    "Ejecutar", requireAcknowledgement: true);
                 if (!confirmed)
                 {
                     TraceUi($"Action confirmation declined: {action.Title}");
@@ -523,31 +590,52 @@ public sealed partial class ShellWindow : Window
             }
             previousCts?.Dispose();
 
-            var context = new ModuleExecutionContext(this, _host);
+            var context = new ModuleExecutionContext(this, _host, simulate, action.ChangesSystem);
 
             SetBusy(true, $"Ejecutando: {action.Title}...");
             AppendOutput(string.Empty, OutputKind.Muted);
             AppendOutput($"═══ {action.Title} ═══", OutputKind.Command);
-            if (action.ChangesSystem && _host.DryRun)
+            if (simulate)
             {
                 AppendOutput("Modo simulación activo: no se aplicarán cambios reales.", OutputKind.Warning);
             }
 
             try
             {
+                if (action.ChangesSystem && !simulate)
+                {
+                    CancelOperationButton.IsEnabled = false;
+                    SetStatus("Creando y verificando punto de restauración...");
+                    var created = await Task.Run(() => _host.RestorePoints.Create(action.Title), operation.Token);
+                    operation.Token.ThrowIfCancellationRequested();
+                    if (!created)
+                    {
+                        _host.Logger.Warn($"No verified restore point for action: {action.Title}");
+                        var proceed = await Dialogs.ConfirmAsync("Punto de restauración no disponible",
+                            "Windows no ha creado un punto de restauración verificable. Continuar no permite recuperar automáticamente los cambios. Los puntos de restauración tampoco sustituyen una copia de seguridad de tus archivos. ¿Continuar sin punto de restauración?",
+                            "Continuar sin punto");
+                        _host.Logger.Warn($"Continue without restore point: {proceed}; action={action.Title}");
+                        if (!proceed) { SetStatus("Acción no ejecutada"); return; }
+                    }
+                    else AppendOutput("Punto de restauración verificado; no sustituye una copia de seguridad.", OutputKind.Info);
+                    CancelOperationButton.IsEnabled = _currentCanCancel;
+                    operation.Token.ThrowIfCancellationRequested();
+                }
                 TraceUi($"Action executing: {action.Title}");
+                if (action.ChangesSystem && !simulate && !_host.Logger.IsPersistent)
+                    throw new InvalidOperationException("El registro persistente dejó de estar disponible; no se iniciaron los cambios.");
                 await action.Execute(context, operation.Token);
                 TraceUi($"Action returned: {action.Title}; cancelled={operation.IsCancellationRequested}");
                 if (!operation.IsCancellationRequested)
                 {
-                    SetStatus("Acción finalizada");
-                    AppendOutput("Acción finalizada.", OutputKind.Success);
+                    SetStatus(simulate ? "Simulación finalizada" : "Acción terminada; revisa el resultado");
+                    AppendOutput(simulate ? "Simulación finalizada: no se ejecutaron los cambios." : "Acción terminada; revisa los resultados anteriores.", simulate ? OutputKind.Warning : OutputKind.Info);
                 }
             }
             catch (OperationCanceledException)
             {
                 SetStatus("Operación cancelada");
-                AppendOutput("Operación cancelada por el usuario.", OutputKind.Warning);
+                AppendOutput("Operación cancelada. Si se realizaron cambios, pueden haber quedado incompletos; revisa el sistema.", OutputKind.Warning);
             }
             catch (Exception exception)
             {
@@ -574,11 +662,12 @@ public sealed partial class ShellWindow : Window
                 }
                 operation.Dispose();
                 ReportProgress(100);
-                SetBusy(false, "Listo");
+                SetBusy(false, null);
             }
         }
         finally
         {
+            DryRunSwitch.IsEnabled = true;
             lock (_operationLock)
             {
                 _isBusy = false;
@@ -586,13 +675,13 @@ public sealed partial class ShellWindow : Window
         }
     }
 
-    private void SetBusy(bool busy, string status)
+    private void SetBusy(bool busy, string? status)
     {
         _isBusy = busy;
         NavView.IsEnabled = !busy;
         CancelOperationButton.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
-        CancelOperationButton.IsEnabled = busy;
-        SetStatus(status);
+        CancelOperationButton.IsEnabled = busy && _currentCanCancel;
+        if (status is not null) SetStatus(status);
     }
 
     // ───────────────────────────── misc ─────────────────────────────
@@ -602,8 +691,9 @@ public sealed partial class ShellWindow : Window
         AppendOutput($"WDigger {AppVersion} · WinUI 3 · Fluent Design", OutputKind.Success);
         AppendOutput($"Ubicación de datos: {_host.BaseDirectory}", OutputKind.Muted);
         AppendOutput($"Registro de auditoría: {_host.Logger.LogFilePath}", OutputKind.Muted);
+        if (!_host.Logger.IsPersistent) AppendOutput("No hay almacenamiento para el registro persistente. Las operaciones de modificación permanecen bloqueadas.", OutputKind.Warning);
         AppendOutput("Selecciona una herramienta en el panel lateral y pulsa Ejecutar en cualquier tarjeta.", OutputKind.Info);
-        AppendOutput("Las operaciones largas se pueden cancelar desde el botón de cancelación de la barra de salida.", OutputKind.Info);
+        AppendOutput("Algunas operaciones no se pueden cancelar de forma segura. No cierres la aplicación mientras estén activas.", OutputKind.Info);
     }
 
     private async Task ShowAboutAsync()
@@ -621,12 +711,12 @@ public sealed partial class ShellWindow : Window
             });
             panel.Children.Add(new TextBlock
             {
-                Text = "Herramienta nativa de diagnóstico y reparación para Windows 10 y 11. WMI, sensores en tiempo real, SMART, batería, ajustes reversibles, red, copias Acronis, activación y limpieza — en una aplicación Fluent Design portable.",
+                Text = "Herramienta nativa de diagnóstico y reparación para Windows 10 y 11. WMI, sensores, diagnóstico y algunas reparaciones de Windows. Varias operaciones siguen suspendidas por seguridad; consulta la documentación.",
                 TextWrapping = TextWrapping.Wrap
             });
             panel.Children.Add(new TextBlock
             {
-                Text = "Portable · .NET 10 · WinUI 3 (Windows App SDK) · Siempre elevada con requireAdministrator",
+                Text = "Portable · .NET 10 · WinUI 3 · La interfaz se ejecuta con los permisos del usuario",
                 TextWrapping = TextWrapping.Wrap,
                 Foreground = textBrush
             });
@@ -661,6 +751,14 @@ public sealed partial class ShellWindow : Window
         }
     }
 
+    private void OnAppWindowClosing(AppWindow sender, AppWindowClosingEventArgs args)
+    {
+        if (!_isBusy) return;
+        args.Cancel = true;
+        SetStatus("Espera a que termine la operación antes de cerrar WDigger.");
+        AppendOutput("No se puede cerrar la ventana durante una operación. Espera a que termine; si la cancelación está disponible, revisa primero sus riesgos.", OutputKind.Warning);
+    }
+
     private void OnClosed(object sender, WindowEventArgs args)
     {
         _closing = true;
@@ -690,6 +788,4 @@ public sealed partial class ShellWindow : Window
         }
     }
 
-    private static SolidColorBrush Brush(byte r, byte g, byte b)
-        => new(ColorHelper.FromArgb(0xFF, r, g, b));
 }

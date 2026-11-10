@@ -53,7 +53,8 @@ public sealed class DriversModule : IModule
         context.WriteLine($"Destino: {path}", OutputKind.Muted);
         try
         {
-            Directory.CreateDirectory(path);
+            if (!host.DryRun) Directory.CreateDirectory(path);
+            else context.WriteLine($"[SIMULACIÓN] Se crearía la carpeta {path}.", OutputKind.Warning);
         }
         catch (Exception exception)
         {
@@ -62,8 +63,7 @@ public sealed class DriversModule : IModule
         }
 
         var escaped = path.Replace("'", "''");
-        await context.RunCommandAsync("powershell",
-            $"-NoProfile -Command \"Export-WindowsDriver -Online -Destination '{escaped}' -Verbose\"", token);
+        await context.RunPowerShellAsync($"Export-WindowsDriver -Online -Destination '{escaped}' -Verbose", token);
     }
 
     private static async Task AddDriverAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
@@ -75,6 +75,7 @@ public sealed class DriversModule : IModule
         {
             return;
         }
-        await context.RunCommandAsync("pnputil", $"/add-driver \"{inf}\" /install", token);
+        if (!await context.ConfirmAsync("Instalar controlador", $"Se instalará el controlador de «{inf}». Un controlador incorrecto puede inutilizar un dispositivo. ¿Continuar?")) return;
+        await context.RunArgumentsAsync("pnputil", new[] { "/add-driver", inf, "/install" }, token);
     }
 }

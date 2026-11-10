@@ -12,9 +12,9 @@ public sealed class ActivationModule : IModule
     public IReadOnlyList<ModuleAction> CreateActions(AppHost host) => new[]
     {
         new ModuleAction("Comprobar activación de Windows", "Consulta el estado de la licencia mediante slmgr /xpr.",
-            (context, token) => Run(host, context, token, "cscript", "//Nologo %SystemRoot%\\System32\\slmgr.vbs /xpr")),
+            (context, token) => RunWindowsLicenseAsync(context, token, "/xpr")),
         new ModuleAction("Activar Windows", "Solicita activación con la clave o licencia digital ya configurada.",
-            (context, token) => Run(host, context, token, "cscript", "//Nologo %SystemRoot%\\System32\\slmgr.vbs /ato"),
+            (context, token) => RunWindowsLicenseAsync(context, token, "/ato"),
             changesSystem: true,
             confirmation: "Se intentará activar Windows con la licencia configurada. No se instalarán claves nuevas."),
         new ModuleAction("Comprobar activación de Office", "Localiza ospp.vbs y consulta el estado de las licencias de Office.",
@@ -35,7 +35,7 @@ public sealed class ActivationModule : IModule
             context.WriteLine("No se encontró ospp.vbs en las ubicaciones habituales de Office.", OutputKind.Warning);
             return;
         }
-        await context.RunCommandAsync("cscript", $"//Nologo \"{script}\" /dstatus", token);
+        await context.RunArgumentsAsync("cscript", new[] { "//Nologo", script, "/dstatus" }, token);
     }
 
     private static async Task ActivateOfficeAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
@@ -47,7 +47,7 @@ public sealed class ActivationModule : IModule
             context.WriteLine("No se encontró ospp.vbs en las ubicaciones habituales de Office.", OutputKind.Warning);
             return;
         }
-        await context.RunCommandAsync("cscript", $"//Nologo \"{script}\" /act", token);
+        await context.RunArgumentsAsync("cscript", new[] { "//Nologo", script, "/act" }, token);
     }
 
     private static Task DetectHeuKms(AppHost host, ModuleExecutionContext context, CancellationToken token)
@@ -85,10 +85,6 @@ public sealed class ActivationModule : IModule
         @"C:\Program Files (x86)\Microsoft Office\Office15\ospp.vbs"
     }.FirstOrDefault(File.Exists);
 
-    private static Task<CommandResult> Run(
-        AppHost host, ModuleExecutionContext context, CancellationToken token, string fileName, string arguments)
-    {
-        _ = host;
-        return context.RunCommandAsync(fileName, arguments, token);
-    }
+    private static Task<CommandResult> RunWindowsLicenseAsync(ModuleExecutionContext context, CancellationToken token, string operation)
+        => context.RunArgumentsAsync("cscript", new[] { "//Nologo", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "slmgr.vbs"), operation }, token);
 }

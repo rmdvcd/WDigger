@@ -15,11 +15,11 @@ public sealed class SoftwareModule : IModule
         new ModuleAction(
             "Instalar paquetes configurados",
             "Instala de forma desatendida todos los paquetes de config/software.json.",
-            (context, token) => InstallAllAsync(host, context, token)),
+            (context, token) => InstallAllAsync(host, context, token), changesSystem: true),
         new ModuleAction(
             "Instalar un paquete configurado",
             "Permite elegir un único paquete de config/software.json.",
-            (context, token) => InstallSingleAsync(host, context, token)),
+            (context, token) => InstallSingleAsync(host, context, token), changesSystem: true),
         new ModuleAction(
             "Buscar un paquete",
             "Busca en los orígenes configurados de Winget.",
@@ -31,9 +31,9 @@ public sealed class SoftwareModule : IModule
         new ModuleAction(
             "Quitar un paquete Appx",
             "Quita aplicaciones que coincidan con un patrón; puede afectar a funciones de Windows.",
-            (context, token) => RemoveAppxAsync(host, context, token),
+            (context, token) => Task.CompletedTask,
             changesSystem: true,
-            confirmation: "Quitar paquetes Appx puede romper funciones o aplicaciones de Windows.")
+            unavailableReason: "Suspendida hasta poder seleccionar y confirmar los paquetes exactos.")
     };
 
     private static async Task InstallAllAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
@@ -45,6 +45,7 @@ public sealed class SoftwareModule : IModule
             return;
         }
 
+        foreach (var package in packages) SoftwarePackagePolicy.Validate(package);
         ShowPackages(context, packages);
         if (!await context.ConfirmAsync("Instalar paquetes configurados",
                 $"Se procesarán {packages.Count} paquetes. ¿Quieres continuar?"))
@@ -59,7 +60,7 @@ public sealed class SoftwareModule : IModule
             context.SetStatus($"Instalando {package.Name} ({index + 1}/{packages.Count})...");
             var executable = Executable(package);
             var arguments = InstallArguments(package);
-            await context.RunCommandAsync(executable, arguments, token);
+            await context.RunArgumentsAsync(executable, arguments, token);
             context.ReportProgress((index + 1) * 100 / packages.Count);
         }
     }
@@ -77,11 +78,12 @@ public sealed class SoftwareModule : IModule
             return;
         }
 
+        SoftwarePackagePolicy.Validate(package);
         if (!await context.ConfirmAsync("Instalar paquete", $"Se instalará {package.Name} ({package.Id}). ¿Continuar?"))
         {
             return;
         }
-        await context.RunCommandAsync(Executable(package), InstallArguments(package), token);
+        await context.RunArgumentsAsync(Executable(package), InstallArguments(package), token);
     }
 
     private static async Task SearchAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
@@ -92,18 +94,7 @@ public sealed class SoftwareModule : IModule
         {
             return;
         }
-        await context.RunCommandAsync("winget", $"search {EscapeForWinget(query)} --accept-source-agreements", token);
-    }
-
-    private static async Task RemoveAppxAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
-    {
-        _ = host;
-        var pattern = await context.PromptAsync("Quitar paquete Appx", "Patrón del nombre (por ejemplo, *Weather*):");
-        if (pattern is null) return;
-
-        var escaped = pattern.Replace("'", "''");
-        await context.RunCommandAsync("powershell",
-            $"-NoProfile -Command \"Get-AppxPackage '{escaped}' | Remove-AppxPackage\"", token);
+        await context.RunArgumentsAsync("winget", new[] { "search", "--query", query, "--accept-source-agreements" }, token);
     }
 
     private static void ShowPackages(ModuleExecutionContext context, IEnumerable<SoftwareDefinition> packages)
@@ -115,15 +106,8 @@ public sealed class SoftwareModule : IModule
     private static string Executable(SoftwareDefinition package)
         => package.Source.Equals("chocolatey", StringComparison.OrdinalIgnoreCase) ? "choco" : "winget";
 
-    private static string InstallArguments(SoftwareDefinition package)
+    private static IReadOnlyList<string> InstallArguments(SoftwareDefinition package)
         => package.Source.Equals("chocolatey", StringComparison.OrdinalIgnoreCase)
-            ? $"install {package.Id} {package.Arguments} -y"
-            : $"install \"{package.Id}\" {package.Arguments} --silent --accept-package-agreements --accept-source-agreements";
-
-    /// <summary>Escapes a query for safe use as a winget argument (no surrounding quotes).</summary>
-    private static string EscapeForWinget(string value)
-    {
-        var sanitized = string.Concat(value.Where(c => !"<>&|;\"'".Contains(c))).Trim();
-        return string.IsNullOrWhiteSpace(sanitized) ? "*" : sanitized;
-    }
+            ? new[] { "install", package.Id, "-y" }
+            : new[] { "install", "--id", package.Id, "--exact", "--silent", "--accept-package-agreements", "--accept-source-agreements" };
 }

@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../src/WDigger/Core/OperationPolicy.cs" Link="Core/OperationPolicy.cs" />
+    <Compile Include="../../src/WDigger/Diagnostics/DiagnosticService.cs" Link="Diagnostics/DiagnosticService.cs" />
+    <Compile Include="../../src/WDigger/Diagnostics/DiagnosticReport.cs" Link="Diagnostics/DiagnosticReport.cs" />
+    <Compile Include="../../src/WDigger/Core/AppLogger.cs" Link="Core/AppLogger.cs" />
+    <Compile Include="../../src/WDigger/Core/CommandExecutor.cs" Link="Core/CommandExecutor.cs" />
+    <Compile Include="../../src/WDigger/Core/CommandResult.cs" Link="Core/CommandResult.cs" />
+    <Compile Include="../../src/WDigger/Core/SoftwarePackagePolicy.cs" Link="Core/SoftwarePackagePolicy.cs" />
+    <Compile Include="../../src/WDigger/Models/SoftwareDefinition.cs" Link="Models/SoftwareDefinition.cs" />
+  </ItemGroup>
+</Project>

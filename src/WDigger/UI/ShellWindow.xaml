@@ -20,7 +20,7 @@
 
             <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Spacing="10" Padding="14,0,0,0">
                 <Border Width="26" Height="26" CornerRadius="6" Background="{ThemeResource AppAccentBrush}" VerticalAlignment="Center">
-                    <FontIcon Glyph="&#xE90F;" FontSize="13" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    <FontIcon Glyph="&#xE90F;" FontSize="13" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
                 </Border>
                 <TextBlock Text="WDigger" FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center" />
                 <TextBlock Text="Diagnóstico y reparación de Windows · Portable v3.0" FontSize="11"
@@ -31,7 +31,7 @@
                 <Border Background="{ThemeResource SafeSoftBrush}" CornerRadius="10" Padding="9,3,10,3" VerticalAlignment="Center">
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <Ellipse Width="7" Height="7" Fill="{ThemeResource SafeBrush}" VerticalAlignment="Center" />
-                        <TextBlock Text="ADMINISTRADOR" FontSize="10" FontWeight="SemiBold" CharacterSpacing="60"
+                        <TextBlock x:Name="PrivilegeLabel" Text="SIN ELEVAR" FontSize="10" FontWeight="SemiBold" CharacterSpacing="60"
                                    Foreground="{ThemeResource SafeBrush}" VerticalAlignment="Center" />
                     </StackPanel>
                 </Border>
@@ -59,6 +59,9 @@
                     <NavigationViewItem.Icon>
                         <FontIcon Glyph="&#xE80F;" />
                     </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Tag="diagnostics" Content="Diagnóstico">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE9D9;" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
                 <NavigationViewItemHeader Content="Herramientas" />
                 <NavigationViewItem Tag="hardware" Content="Hardware">
@@ -151,7 +154,7 @@
 
                     <ContentControl x:Name="PageHost" Grid.Row="0" />
 
-                    <ProgressBar x:Name="ActivityProgress" Grid.Row="1" Height="3"
+                    <ProgressBar x:Name="ActivityProgress" AutomationProperties.Name="Progreso de la operación" Grid.Row="1" Height="3"
                                  IsIndeterminate="False" Value="0" Visibility="Collapsed" />
 
                     <!-- ═══ Integrated output / results pane ═══ -->
@@ -174,7 +177,7 @@
                                 <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
                                     <TextBlock Text="SALIDA" FontSize="10" FontWeight="SemiBold" CharacterSpacing="150"
                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
-                                    <TextBlock x:Name="StatusText" Text="Listo" FontSize="12"
+                                    <TextBlock x:Name="StatusText" AutomationProperties.LiveSetting="Polite" Text="Listo" FontSize="12"
                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                                TextTrimming="CharacterEllipsis" VerticalAlignment="Center" MaxWidth="460" />
                                 </StackPanel>

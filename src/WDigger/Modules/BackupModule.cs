@@ -16,8 +16,8 @@ public sealed class BackupModule : IModule
         new ModuleAction("Ver detalles de una copia", "Muestra tamaño y fecha de modificación de un archivo .tibx.",
             (context, token) => ShowDetailsAsync(host, context, token)),
         new ModuleAction("Restaurar una copia .tibx", "Usa deploycmd de Acronis para restaurar en una unidad de destino.",
-            (context, token) => RestoreTibxAsync(host, context, token), changesSystem: true,
-            confirmation: "ADVERTENCIA: restaurar una copia puede sobrescribir todos los datos del disco de destino.")
+            (context, token) => Task.CompletedTask, changesSystem: true,
+            unavailableReason: "Suspendida hasta validar Acronis y confirmar el disco de destino de forma segura.")
     };
 
     private static async Task ListTibxAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
@@ -65,31 +65,4 @@ public sealed class BackupModule : IModule
         });
     }
 
-    private static async Task RestoreTibxAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
-    {
-        _ = host;
-        var file = await context.PickFileAsync("Seleccionar copia para restaurar", "Acronis True Image (*.tibx)|*.tibx");
-        if (file is null) return;
-        var target = await context.PromptAsync("Restaurar copia", "Letra de la unidad de destino (por ejemplo, C):");
-        if (target is null) return;
-        target = target.TrimEnd(':').Trim();
-        if (target.Length != 1 || !char.IsLetter(target[0]))
-        {
-            context.WriteLine("La unidad de destino no es válida.", OutputKind.Warning);
-            return;
-        }
-
-        var acronis = new[]
-        {
-            @"C:\Program Files (x86)\Acronis\BackupAndRecovery\deploycmd.exe",
-            @"C:\Program Files\Acronis\BackupAndRecovery\deploycmd.exe"
-        }.FirstOrDefault(File.Exists);
-        if (acronis is null)
-        {
-            context.WriteLine("No se encontró deploycmd.exe. Instala Acronis Backup and Recovery para habilitar la restauración.",
-                OutputKind.Error);
-            return;
-        }
-        await context.RunCommandAsync(acronis, $"restore --backup \"{file}\" --target {target}:", token);
-    }
 }

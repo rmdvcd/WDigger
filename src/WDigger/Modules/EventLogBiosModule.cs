@@ -33,7 +33,7 @@ public sealed class EventLogBiosModule : IModule
         var log = await context.PromptAsync("Consultar eventos", "Nombre del registro (System, Application, Security...):", "System");
         if (log is not null)
         {
-            await context.RunCommandAsync("wevtutil", $"qe \"{log}\" /c:20 /f:text /rd:true", token);
+            await context.RunArgumentsAsync("wevtutil", new[] { "qe", log, "/c:20", "/f:text", "/rd:true" }, token);
         }
     }
 

@@ -17,25 +17,28 @@ public sealed class RepairModule : IModule
             "Comprueba y repara los archivos protegidos de Windows. Puede tardar varios minutos.",
             (context, token) => RunSfcAsync(host, context, token),
             changesSystem: true,
-            confirmation: "SFC analizará y reparará archivos del sistema. Guarda tu trabajo antes de continuar."),
+            confirmation: "SFC analizará y puede reparar archivos protegidos del sistema. Guarda tu trabajo antes de continuar.",
+            canCancel: false, allowedInElevatedSession: true),
         new ModuleAction(
             "DISM /RestoreHealth",
             "Repara el almacén de componentes de Windows; puede necesitar Windows Update.",
             (context, token) => RunDismAsync(host, context, token),
             changesSystem: true,
-            confirmation: "DISM reparará el almacén de componentes y puede descargar archivos desde Windows Update."),
+            confirmation: "DISM reparará el almacén de componentes y puede descargar archivos desde Windows Update.",
+            canCancel: false, allowedInElevatedSession: true),
         new ModuleAction(
-            "CHKDSK /scan /perf en C:",
-            "Analiza el volumen del sistema. Si está en uso, la reparación puede quedar para el próximo reinicio.",
+            "CHKDSK /scan en el volumen del sistema",
+            "Analiza en línea el volumen del sistema. Windows puede realizar correcciones y solicitar un reinicio.",
             (context, token) => RunChkdskAsync(host, context, token),
             changesSystem: true,
-            confirmation: "Se analizará C:. Algunas correcciones pueden requerir un reinicio."),
+            confirmation: "Se analizará el volumen del sistema; algunas correcciones pueden requerir un reinicio.",
+            canCancel: false, allowedInElevatedSession: true),
         new ModuleAction(
             "Reparar Windows Update",
             "Detiene servicios, renombra SoftwareDistribution y catroot2 y reinicia los servicios.",
-            (context, token) => RepairWindowsUpdateAsync(host, context, token),
+            (context, token) => Task.CompletedTask,
             changesSystem: true,
-            confirmation: "Se restablecerán los componentes y la caché de Windows Update. Se recomienda reiniciar al terminar."),
+            unavailableReason: "Suspendida hasta garantizar la recuperación de servicios ante errores o cancelación."),
         new ModuleAction(
             "Restablecer caché de Winget",
             "Fuerza el restablecimiento de los orígenes de paquetes de Winget.",
@@ -45,51 +48,23 @@ public sealed class RepairModule : IModule
 
     private static async Task RunSfcAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
     {
-        var result = await RunCommand(host, context, token, "sfc", "/scannow");
+        var result = await context.RunArgumentsAsync("sfc", new[] { "/scannow" }, token);
         ExplainResult(context, result, "SFC");
     }
 
     private static async Task RunDismAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
     {
-        var result = await RunCommand(host, context, token, "DISM", "/Online /Cleanup-Image /RestoreHealth");
+        var result = await context.RunArgumentsAsync("DISM", new[] { "/Online", "/Cleanup-Image", "/RestoreHealth" }, token);
         ExplainResult(context, result, "DISM");
     }
 
     private static async Task RunChkdskAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
     {
-        var result = await RunCommand(host, context, token, "chkdsk", "/scan /perf C:");
+        var root = Path.GetPathRoot(Environment.SystemDirectory);
+        if (string.IsNullOrEmpty(root) || root.Length != 3 || root[1] != ':')
+            throw new InvalidOperationException("No se pudo determinar la unidad del sistema.");
+        var result = await context.RunArgumentsAsync("chkdsk", new[] { root[..2], "/scan" }, token);
         ExplainResult(context, result, "CHKDSK");
-    }
-
-    private static async Task RepairWindowsUpdateAsync(
-        AppHost host, ModuleExecutionContext context, CancellationToken token)
-    {
-        var services = new[] { "wuauserv", "cryptSvc", "bits", "msiserver" };
-        var totalSteps = services.Length * 2 + 2;
-        var step = 0;
-
-        foreach (var service in services)
-        {
-            context.SetStatus($"Deteniendo {service}...");
-            await RunCommand(host, context, token, "net", $"stop {service}");
-            context.ReportProgress(++step * 100 / totalSteps);
-        }
-
-        await RunCommand(host, context, token, "cmd",
-            "/c ren %SystemRoot%\\SoftwareDistribution SoftwareDistribution.old");
-        context.ReportProgress(++step * 100 / totalSteps);
-        await RunCommand(host, context, token, "cmd",
-            "/c ren %SystemRoot%\\System32\\catroot2 catroot2.old");
-        context.ReportProgress(++step * 100 / totalSteps);
-
-        foreach (var service in Enumerable.Reverse(services))
-        {
-            context.SetStatus($"Iniciando {service}...");
-            await RunCommand(host, context, token, "net", $"start {service}");
-            context.ReportProgress(++step * 100 / totalSteps);
-        }
-
-        context.WriteLine("Restablecimiento finalizado. Se recomienda reiniciar Windows.", OutputKind.Success);
     }
 
     private static Task<CommandResult> RunCommand(
@@ -107,6 +82,7 @@ public sealed class RepairModule : IModule
 
     private static void ExplainResult(ModuleExecutionContext context, CommandResult result, string tool)
     {
+        if (result.IsSimulated) return;
         var output = result.StandardOutput ?? string.Empty;
         var explanation = tool switch
         {
@@ -120,15 +96,13 @@ public sealed class RepairModule : IModule
                 => "La reparación del almacén de componentes finalizó correctamente.",
             "DISM" when Regex.IsMatch(output, "no component store corruption detected", RegexOptions.IgnoreCase)
                 => "No se detectaron daños en el almacén de componentes.",
-            "CHKDSK" when Regex.IsMatch(output, "No problems found|no errors|has been scanned", RegexOptions.IgnoreCase)
+            "CHKDSK" when Regex.IsMatch(output, "No problems found|no errors", RegexOptions.IgnoreCase)
                 => "No se encontraron errores en el sistema de archivos.",
             "CHKDSK" when Regex.IsMatch(output, "Correcting errors|errors found|unrecoverable", RegexOptions.IgnoreCase)
                 => "Se detectaron o corrigieron errores. Revisa la salida; puede ser necesario reiniciar.",
-            _ => result.Success
-                ? "La operación terminó correctamente. Revisa la salida y el registro completo."
-                : "La operación terminó con errores. Revisa la salida y el registro completo."
+            _ => "Resultado no interpretado con certeza. Revisa la salida de la herramienta; el registro no guarda toda la salida."
         };
         context.WriteLine($"Interpretación de {tool}: {explanation}",
-            result.Success ? OutputKind.Success : OutputKind.Warning);
+            OutputKind.Warning);
     }
 }

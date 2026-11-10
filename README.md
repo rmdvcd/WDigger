@@ -1,219 +1,41 @@
 # WDigger
 
-WDigger es una herramienta **nativa de Windows** para diagnóstico y reparación,
-dirigida a técnicos de PC y portátiles. Es una alternativa *offline-first* a
-herramientas como WinUtil, con inventario WMI, sensores en tiempo real, estado
-SMART, batería y utilidades de mantenimiento.
+WDigger es una herramienta portable WinUI 3 de diagnóstico y reparación de Windows 10/11 x64. Esta versión está **en desarrollo y no está validada para producción**. Consulta [AUDITORIA_Y_PLAN.md](AUDITORIA_Y_PLAN.md) y [ESTADO_CAMBIOS_SEGURIDAD.md](ESTADO_CAMBIOS_SEGURIDAD.md).
 
-La interfaz es una aplicación **WinUI 3 (Windows App SDK)** con Fluent Design:
-barra de título personalizada, navegación lateral (`NavigationView`) con los 13
-módulos además del panel de control, tarjetas de acción, tema claro/oscuro/
-automático persistente, y un **panel de salida integrado** con la salida en
-vivo de los comandos (sin consolas emergentes), resultados en tabla, progreso y
-botón de cancelación.
+## Permisos y operaciones reales
 
-> **Herramienta de uso personal.** No está destinada a distribución comercial.
-> WDigger solicita siempre elevación mediante UAC y no continúa sin privilegios
-> de administrador.
+La interfaz arranca con los permisos del usuario (`asInvoker`). El diagnóstico no necesita elevación. Para utilizar las tres operaciones reales habilitadas, abre explícitamente WDigger **como administrador**. Esto eleva toda la aplicación: todavía no existe un auxiliar aislado. Las operaciones de terceros y configuraciones editables no están autorizadas para cambios reales.
 
-## Características de la aplicación
-
-- **Fluent Design nativo:** controles WinUI 3, fuente Segoe UI Variable, Mica,
-  DPI por monitor y compatibilidad con Windows 10/11.
-- **Estados de ejecución en tarjetas:** las tarjetas muestran «Ejecutando…»
-  mientras se procesa una acción y se deshabilitan para evitar doble ejecución.
-- **Timeout de comandos:** los comandos que superan los 30 minutos se finalizan
-  automáticamente para evitar bloqueos indefinidos.
-- **Manejo robusto de excepciones:** todos los módulos capturan errores de WMI,
-  archivos y red sin que la aplicación se cierre.
-- **Panel de control:** resumen del sistema (SO, CPU, memoria, disco C:),
-  sensores en tiempo real, acciones rápidas, ubicaciones de datos y registro de
-  auditoría.
-- **Tema claro/oscuro/automático:** se cicla desde el pie de navegación y se
-  guarda en `config/ui-settings.json`.
-- **Panel de salida integrado:** stdout/stderr en vivo con colores, copia al
-  portapapeles, limpieza, vista de tabla y botón de cancelación.
-- **Tarjetas de acción:** cada operación muestra descripción, insignia
-  «Modifica el sistema» / «Solo lectura» y botón Ejecutar.
-- **Portable:** un único `WDigger.exe` x64 con .NET, Windows App SDK
-  (self-contained) y las dependencias incluidas. Sin instalador ni runtime previo.
-- **Siempre administrador:** `app.manifest` declara `requireAdministrator` y el
-  arranque vuelve a comprobar la elevación como medida adicional.
-- **Sin consolas emergentes:** DISM, SFC, CHKDSK, PowerShell, Winget, netsh y el
-  resto de procesos muestran su salida dentro de la ventana principal.
-- **Operaciones cancelables:** las tareas largas se ejecutan de forma asíncrona;
-  al cancelar, WDigger intenta finalizar también el proceso y sus descendientes.
-- **Datos junto al ejecutable:** `config/`, `logs/`, el historial de ajustes y
-  los archivos de errores se guardan en la carpeta portable.
-- **Configuración autocontenida:** los JSON originales están incrustados en el
-  EXE. Si no existen archivos externos, WDigger usa esos valores e intenta crear
-  copias editables en `config/`. Acepta el formato con envoltura (`{"tweaks": [...]}`,
-  `{"packages": [...]}`) y también arrays JSON sueltos. En un USB de solo lectura
-  puede seguir usando los valores incrustados.
-- **Modo simulación:** interruptor «Simulación» en la barra de título (también
-  `--dry-run`) registra las acciones de modificación sin ejecutarlas; persiste;
-  se destaca con un aviso en el panel de control.
-
-## Registros y diagnóstico de cierres
-
-Cada ejecución crea `logs/WDigger_yyyyMMdd_HHmmss.log` junto al ejecutable.
-En una compilación Debug habitual se encuentra en
-`src/WDigger/bin/Debug/net10.0-windows10.0.19041.0/win-x64/logs/`.
-El registro incluye el ID del proceso, navegación, interacciones de puntero
-(tipo y nombre del control, sin texto introducido), etapas de acciones y salida
-completa de comandos. La ruta exacta también aparece en el panel de control y
-la salida de la aplicación. Las excepciones no controladas que se puedan capturar
-se escriben en `WDigger.crash.log` junto al ejecutable.
-
-Tras un cierre, comparte el registro de sesión más reciente y, si existe,
-`WDigger.crash.log`, junto con la hora y el evento de Windows correspondiente.
-Revisa y oculta datos sensibles antes de compartirlos: la salida de comandos y
-las rutas pueden contener información personal. Un desbordamiento de pila o un
-fallo nativo puede terminar el proceso sin que se escriba una excepción; las
-últimas líneas solo indican el contexto previo, no necesariamente la causa. En
-ese caso puede ser necesario un volcado de memoria con la pila de llamadas.
-
-## Stack
-
-| Capa | Tecnología |
+| Operación | Estado actual |
 |---|---|
-| Lenguaje / runtime | C# 12, .NET 10, Windows x64 |
-| Interfaz | WinUI 3 (Windows App SDK 1.8, self-contained), Fluent Design |
-| Sensores | LibreHardwareMonitorLib |
-| Inventario / SMART / batería / BIOS | System.Management (WMI) |
-| Comandos | DISM, SFC, CHKDSK, netsh, PowerShell, Winget, pnputil, winfr, wevtutil, slmgr y ospp.vbs |
-| Configuración | JSON editable en `config/`, con valores incrustados de respaldo |
-| Auditoría | Registro por sesión en `logs/`, incluyendo stdout, stderr, código y duración |
-| CI | GitHub Actions sobre `windows-latest` publica y verifica el EXE portable |
+| SFC `/scannow` | Disponible en sesión elevada, tras confirmación. |
+| DISM `/Online /Cleanup-Image /RestoreHealth` | Disponible en sesión elevada, tras confirmación. Puede utilizar Windows Update. |
+| CHKDSK `/scan` en el volumen del sistema | Disponible en sesión elevada, tras confirmación. Windows puede hacer correcciones o solicitar un reinicio. |
+| Otras acciones modificadoras | Solo simulación; no disponibles en modo real. |
+| Ajustes JSON, reparación de Windows Update, restauración Acronis, WinFR, eliminación Appx | Suspendidos, también en simulación, hasta su rediseño. |
 
-## Estructura
+Las acciones reales habilitadas usan ejecutables de Windows resueltos desde System32 y argumentos fijos; requieren registro persistente y un intento de creación y verificación de punto de restauración. Si este falla, se pide autorización explícita para continuar sin él. **Un punto de restauración no garantiza rollback y no sustituye una copia de seguridad.** Guarda el trabajo, realiza una copia y mantén alimentación estable antes de ejecutar. Estas operaciones no ofrecen cancelación en la UI: un apagado o cierre forzado puede dejar cambios parciales. El resultado del comando no garantiza por sí solo que Windows esté sano.
 
-```text
-src/WDigger/
-├─ App.xaml(.cs)              # Recursos de tema + arranque (elevación UAC y crash logs)
-├─ UI/                        # Ventana principal (ShellWindow), DialogService, TableRenderer,
-│                             # ModuleExecutionContext, ModuleAction, NativeMessageBox
-├─ Assets/wdigger.ico         # Icono de la aplicación
-├─ Core/                      # AppHost, CommandExecutor, AppLogger, ConfigManager,
-│                             # RestorePointManager, AppSettings, CrashLog
-├─ Models/                    # ComponentInfo, SensorReading, TweakDefinition, ...
-├─ Services/                  # InventoryService, SensorService, TweakHistoryService
-├─ Modules/                   # 13 módulos + ModuleCatalog (tag → módulo)
-├─ Views/                     # DashboardPage, ModulePage, ActionCard, ActionCardViewModel
+## Diagnóstico y privacidad
+
+El módulo Diagnóstico reúne comprobaciones de solo lectura y permite exportar un informe de texto. Actualmente consulta espacio del disco del sistema, adaptadores activos y versión del SO; el resto de categorías se marca como **no disponible**. Los resultados no sustituyen un diagnóstico técnico. La exportación escribe el archivo seleccionado incluso en simulación.
+
+El interruptor de simulación evita ejecutar las acciones modificadoras; las consultas de lectura siguen ejecutándose. WDigger puede escribir sus propios ajustes y registros. La simulación no es un éxito real.
+
+Los registros se guardan en JSONL junto al ejecutable o, si no es posible, en `%LOCALAPPDATA%\WDigger\logs`. El registro rota a 2 MiB por archivo y conserva hasta 10 archivos de mejor esfuerzo. Si ambos destinos fallan se conserva solo información temporal en memoria y se bloquean los cambios reales. No se guarda la salida completa de los comandos; hay redacción básica, no exhaustiva. Los informes, salida visible y `WDigger.crash.log` pueden contener datos sensibles: revísalos antes de compartirlos. Si el medio portable es de solo lectura se usan las configuraciones incrustadas, con ajustes no persistentes si no pueden guardarse.
+
+Atajos: F5 analizar, Ctrl+R información de reparaciones, Ctrl+L mostrar/ocultar salida, Esc solicitar cancelación cuando esté permitida, F1 ayuda. Narrator, contraste y DPI aún requieren pruebas en Windows.
+
+## Compilar y publicar
+
+Necesitas Windows 10/11 x64 y el SDK .NET 10. Desde la raíz:
+
+```powershell
+dotnet run --project tests/WDigger.SafetyTests/WDigger.SafetyTests.csproj -c Release
+dotnet build src/WDigger/WDigger.csproj -c Release
+dotnet publish src/WDigger/WDigger.csproj -c Release -p:PublishProfile=Portable-win-x64
 ```
 
-## Módulos
+El ejecutable se genera en `artifacts/portable/WDigger.exe`. `.github/workflows/portable-windows.yml` prepara las pruebas, compilación y publicación; `ci-check-app-start.ps1` es una prueba de arranque opcional para Windows interactivo.
 
-| Módulo | Funciones |
-|---|---|
-| Panel de control | Resumen del sistema, sensores en tiempo real, acciones rápidas, carpetas de datos y registro |
-| Hardware | Inventario WMI, monitor de sensores, discos y batería |
-| Reparación del sistema | SFC, DISM, CHKDSK, Windows Update y caché de Winget |
-| Software | Instalación Winget/Chocolatey, búsqueda, inventario y Appx |
-| Ajustes y privacidad | Ajustes JSON, vista previa, restauración, historial y reversión |
-| Controladores | Exportación, enumeración e instalación de INF |
-| Red / Red avanzada | DNS, DHCP, IP, Winsock, TCP/IP, firewall, proxy y conectividad |
-| Dispositivos | Impresoras y dispositivos PnP |
-| Copias de seguridad | Localización y restauración de archivos Acronis `.tibx` |
-| Activación | Estado de licencias de Windows/Office y detección de HEU-KMS existente |
-| Recuperación | Windows File Recovery (`winfr`) |
-| Eventos y BIOS | Visor de eventos, BIOS, placa base y firmware |
-| Discos y limpieza | Espacio, CHKDSK y archivos temporales |
-
-## Publicar el ejecutable portable
-
-### Requisitos en la máquina de compilación
-
-- Windows 10/11 x64.
-- [.NET 8 SDK](https://dotnet.microsoft.com/download) o posterior.
-
-El SDK solo es necesario para compilar; **no es necesario en el equipo donde se
-use el EXE publicado** (el Windows App SDK viaja dentro del ejecutable).
-
-Desde la raíz del repositorio:
-
-```cmd
-publish-portable.cmd
-```
-
-O bien, el comando equivalente:
-
-```cmd
-dotnet publish "src\WDigger\WDigger.csproj" -c Release -p:PublishProfile=Portable-win-x64
-```
-
-El resultado se crea en:
-
-```text
-artifacts\portable\WDigger.exe
-```
-
-Copia **solamente ese archivo** a una carpeta con permisos de escritura o a un
-USB. Al ejecutarlo, acepta el aviso de UAC. Windows aplicará el manifiesto
-`requireAdministrator` incluso si el usuario hace doble clic normalmente.
-
-La publicación usa `SelfContained`, `PublishSingleFile`,
-`WindowsAppSDKSelfContained`, `WindowsPackageType=None`, `EnableMsixTooling` e
-`IncludeAllContentForSelfExtract` (propiedades requeridas por el Windows App SDK
-para ejecutables single-file no empaquetados), compresión y no recorta
-ensamblados (`PublishTrimmed=false`) para conservar la compatibilidad de WMI,
-WinUI 3 y LibreHardwareMonitor. En el primer arranque, el propio EXE extrae sus
-dependencias en una carpeta temporal (comportamiento normal del modo
-single-file de WinUI).
-
-## CI
-
-`.github/workflows/portable-windows.yml` compila y publica el ejecutable en
-`windows-latest` con cada push y pull request, verifica que el artefacto es un
-único `WDigger.exe` con el manifiesto elevador incrustado, y lo sube como
-artefacto.
-
-## Cambios de la versión 3.0
-
-- **Actualizado a .NET 10 y C# 12.** Mejoras de rendimiento y seguridad del runtime.
-- **Tarjetas de acción con estado de ejecución:** indicador visual «Ejecutando…»
-  y botón deshabilitado durante el procesamiento.
-- **Timeout de comandos de 30 minutos:** previene que procesos colgados bloqueen
-  la interfaz de usuario.
-- **Manejo de excepciones no observadas de TaskScheduler:** los errores en tareas
-  en segundo plano se registran sin cerrar la aplicación.
-- **Validación de entradas de red:** direcciones IP, máscaras y pasarelas se
-  validan antes de ejecutar comandos netsh.
-- **Validación de nombre de equipo:** máximo 15 caracteres, alfanumérico y guiones.
-- **Mejor manejo de rutas con espacios:** rutas de Acronis, controladores y
-  copias de seguridad se escapan correctamente.
-- **WMI failures degradados a "n/a":** consultas WMI fallidas no bloquean el
-  dashboard ni los módulos de dispositivos/BIOS.
-- **SensorService robusto:** fallos de sensores individuales no afectan la
-  lectura de otros sensores.
-
-## Cambios de la versión 3.0
-
-- **Actualizado a .NET 10 y C# 12.** Mejoras de rendimiento y seguridad del runtime.
-- **Tarjetas de acción con estado de ejecución:** indicador visual «Ejecutando…»
-  y botón deshabilitado durante el procesamiento.
-- **Timeout de comandos de 30 minutos:** previene que procesos colgados bloqueen
-  la interfaz de usuario.
-- **Manejo de excepciones no observadas de TaskScheduler:** los errores en tareas
-  en segundo plano se registran sin cerrar la aplicación.
-- **Validación de entradas de red:** direcciones IP, máscaras y pasarelas se
-  validan antes de ejecutar comandos netsh.
-- **Validación de nombre de equipo:** máximo 15 caracteres, alfanumérico y guiones.
-- **Mejor manejo de rutas con espacios:** rutas de Acronis, controladores y
-  copias de seguridad se escapan correctamente.
-- **WMI failures degradados a "n/a":** consultas WMI fallidas no bloquean el
-  dashboard ni los módulos de dispositivos/BIOS.
-- **SensorService robusto:** fallos de sensores individuales no afectan la
-  lectura de otros sensores.
-
-## Cambios de la versión 2.0
-
-- **Reescrito de Windows Forms a WinUI 3 (Windows App SDK 1.8).**
-- Nueva navegación `NavigationView`, panel de control, tarjetas de acción,
-  insignias de seguridad y panel de salida/tabla integrado y contraíble.
-- Tema claro/oscuro/automático persistente (`config/ui-settings.json`).
-- `config/tweaks.json` y `config/software.json` (formato `{"tweaks": [...]}` /
-  `{"packages": [...]}`) ahora se cargan correctamente; antes se esperaba un
-  array JSON suelto y la configuración se ignoraba en silencio.
-- Barra de título personalizada con insignia de administrador e interruptor
-  de modo simulación.
+**Verificación pendiente:** compilar y ejecutar pruebas y escenarios en máquinas virtuales desechables Windows 10/11; probar UAC, denegación de permisos, restauración, cancelación, salida y rutas, y alto contraste/Narrator. No se han probado reparaciones reales en esta sesión. El plan completo, especialmente auxiliar elevado, rollback e interpretación localizada, continúa pendiente.

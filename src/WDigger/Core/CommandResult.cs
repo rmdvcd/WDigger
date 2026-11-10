@@ -12,7 +12,8 @@ public sealed class CommandResult
     public TimeSpan Duration { get; init; }
     public DateTime StartedAt { get; init; } = DateTime.Now;
 
-    public bool Success => ExitCode == 0;
+    public bool IsSimulated { get; init; }
+    public bool Success => !IsSimulated && ExitCode == 0;
 
     public CommandResult() { }
 
