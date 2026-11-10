@@ -1,5 +1,6 @@
 using System.Net;
 using WDigger.Core;
+using WDigger.Models;
 using WDigger.UI;
 
 namespace WDigger.Modules;
