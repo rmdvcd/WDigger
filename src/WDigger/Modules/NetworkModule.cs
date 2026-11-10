@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Sockets;
 using WDigger.Core;
 using WDigger.Models;
 using WDigger.UI;
@@ -19,7 +20,7 @@ public sealed class NetworkModule : IModule
             confirmation: "La conexión de red se interrumpirá temporalmente."),
         new ModuleAction("Restablecer Winsock", "Restablece el catálogo Winsock. Requiere reiniciar.",
             (context, token) => Run(host, context, token, "netsh", "winsock reset"), changesSystem: true,
-            confirmation: "Se restablecerá Winsock y será necesario reiniciar Windows."),
+            confirmation: "Se restablecerá Winsock; las conexiones y sesiones remotas pueden interrumpirse y será necesario reiniciar Windows."),
         new ModuleAction("Restablecer TCP/IP", "Restablece la pila TCP/IP. Requiere reiniciar.",
             (context, token) => Run(host, context, token, "netsh", "int ip reset"), changesSystem: true,
             confirmation: "Se restablecerá la pila TCP/IP y será necesario reiniciar Windows."),
@@ -47,24 +48,24 @@ public sealed class NetworkModule : IModule
         var adapter = await context.PromptAsync("Configurar DNS", "Nombre exacto del adaptador (por ejemplo, Ethernet o Wi-Fi):");
         if (adapter is null) return;
         var primary = await context.PromptAsync("Configurar DNS", "Servidor DNS principal (por ejemplo, 1.1.1.1):");
-        if (primary is null || !IsValidIp(primary)) return;
+        if (primary is null) return;
+        if (!IsValidIp(primary)) throw new ArgumentException("El DNS principal debe ser una dirección IPv4 válida.");
         var secondary = await context.PromptAsync("Configurar DNS", "Servidor DNS secundario (opcional):", allowEmpty: true);
         if (secondary is null) return;
+        if (!string.IsNullOrWhiteSpace(secondary) && !IsValidIp(secondary))
+            throw new ArgumentException("El DNS secundario debe ser una dirección IPv4 válida.");
 
-        await context.RunCommandAsync("netsh",
-            $"interface ip set dns name=\"{adapter}\" static {primary} primary", token);
-        if (!string.IsNullOrWhiteSpace(secondary) && IsValidIp(secondary))
-        {
-            await context.RunCommandAsync("netsh",
-                $"interface ip add dns name=\"{adapter}\" {secondary} index=2", token);
-        }
-        context.WriteLine($"DNS configurado en «{adapter}\".", OutputKind.Success);
+        if (!await context.ConfirmAsync("Confirmar DNS", $"Se cambiará el DNS de «{adapter}» a {primary} {secondary}. Una configuración incorrecta puede interrumpir la conectividad y sesiones remotas. ¿Continuar?")) return;
+        await context.RunArgumentsAsync("netsh", new[] { "interface", "ip", "set", "dns", $"name={adapter}", "static", primary, "primary" }, token);
+        if (!string.IsNullOrWhiteSpace(secondary))
+            await context.RunArgumentsAsync("netsh", new[] { "interface", "ip", "add", "dns", $"name={adapter}", secondary, "index=2" }, token);
+        if (!host.DryRun) context.WriteLine($"DNS configurado en «{adapter}».", OutputKind.Success);
     }
 
     private static bool IsValidIp(string? ip)
     {
         if (string.IsNullOrWhiteSpace(ip)) return false;
-        return IPAddress.TryParse(ip.Trim(), out _);
+        return IPAddress.TryParse(ip.Trim(), out var address) && address.AddressFamily == AddressFamily.InterNetwork;
     }
 
     private static Task<CommandResult> Run(

@@ -24,6 +24,15 @@
                     <SolidColorBrush x:Key="SafeBrush" Color="#107C10" />
                     <SolidColorBrush x:Key="ConsoleBrush" Color="#F7F9FC" />
                 </ResourceDictionary>
+                <ResourceDictionary x:Key="HighContrast">
+                    <SolidColorBrush x:Key="AppAccentBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+                    <SolidColorBrush x:Key="AppAccentSoftBrush" Color="{ThemeResource SystemColorWindowColor}" />
+                    <SolidColorBrush x:Key="DangerSoftBrush" Color="{ThemeResource SystemColorWindowColor}" />
+                    <SolidColorBrush x:Key="DangerBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+                    <SolidColorBrush x:Key="SafeSoftBrush" Color="{ThemeResource SystemColorWindowColor}" />
+                    <SolidColorBrush x:Key="SafeBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+                    <SolidColorBrush x:Key="ConsoleBrush" Color="{ThemeResource SystemColorWindowColor}" />
+                </ResourceDictionary>
                 <ResourceDictionary x:Key="Dark">
                     <SolidColorBrush x:Key="AppAccentBrush" Color="#479EF5" />
                     <SolidColorBrush x:Key="AppAccentSoftBrush" Color="#33479EF5" />

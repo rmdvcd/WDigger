@@ -31,7 +31,7 @@
 
             <TextBlock Grid.Row="1" Margin="0,8,0,10" Text="{Binding Description}"
                        FontSize="11.5" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                       TextWrapping="Wrap" MaxLines="3" TextTrimming="CharacterEllipsis" />
+                       TextWrapping="Wrap" />
 
             <Grid Grid.Row="2">
                 <Grid.ColumnDefinitions>
@@ -39,12 +39,12 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <Border HorizontalAlignment="Left" VerticalAlignment="Center" CornerRadius="8" Padding="8,3,9,3"
-                        Background="{Binding RunningBadgeBackground}">
+                        Background="{ThemeResource LayerFillColorDefaultBrush}">
                     <TextBlock Text="{Binding RunningBadgeText}" FontSize="10" FontWeight="SemiBold"
-                               Foreground="{Binding BadgeForeground}" CharacterSpacing="40" />
+                               Foreground="{ThemeResource TextFillColorPrimaryBrush}" CharacterSpacing="40" />
                 </Border>
                 <Button x:Name="RunButton" Grid.Column="1" Content="Ejecutar"
-                        Style="{ThemeResource AccentButtonStyle}"
+                        Style="{ThemeResource AccentButtonStyle}" IsEnabled="{Binding IsAvailable}"
                         MinWidth="96" Height="32" FontSize="12" Click="RunButton_Click" />
             </Grid>
         </Grid>

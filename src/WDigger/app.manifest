@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
-  <assemblyIdentity version="2.0.0.0" name="WDigger.Portable" />
+  <assemblyIdentity version="3.0.0.0" name="WDigger.Portable" />
 
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v2">
     <security>
       <requestedPrivileges xmlns="urn:schemas-microsoft-com:asm.v3">
-        <!-- Windows displays UAC before starting WDigger; it never runs unelevated. -->
-        <requestedExecutionLevel level="requireAdministrator" uiAccess="false" />
+        <!-- The UI never requests elevation at startup. -->
+        <requestedExecutionLevel level="asInvoker" uiAccess="false" />
       </requestedPrivileges>
     </security>
   </trustInfo>

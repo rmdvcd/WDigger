@@ -44,8 +44,7 @@ public sealed class DevicesModule : IModule
         if (ip is null) return;
         var name = await context.PromptAsync("Agregar impresora de red", "Nombre para mostrar:", ip);
         if (name is null) return;
-        await context.RunCommandAsync("rundll32.exe",
-            $"printui.dll,PrintUIEntry /if /b \"{name}\" /r \"IP_{ip}\" /m \"Generic Printer\" /z", token);
+        await context.RunArgumentsAsync("rundll32.exe", new[] { "printui.dll,PrintUIEntry", "/if", "/b", name, "/r", $"IP_{ip}", "/m", "Generic Printer", "/z" }, token);
     }
 
     private static async Task RemovePrinterAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
@@ -53,7 +52,8 @@ public sealed class DevicesModule : IModule
         _ = host;
         var name = await context.PromptAsync("Quitar impresora", "Nombre exacto de la impresora:");
         if (name is null) return;
-        await context.RunCommandAsync("rundll32.exe", $"printui.dll,PrintUIEntry /dl /n \"{name}\"", token);
+        if (!await context.ConfirmAsync("Quitar impresora", $"Se quitará la impresora «{name}». ¿Continuar?")) return;
+        await context.RunArgumentsAsync("rundll32.exe", new[] { "printui.dll,PrintUIEntry", "/dl", "/n", name }, token);
     }
 
     private static async Task ListPnpDevicesAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
@@ -79,10 +79,11 @@ public sealed class DevicesModule : IModule
             new[] { "Habilitar", "Deshabilitar" }, item => item);
         if (choice is null) return;
 
+        if (!await context.ConfirmAsync("Confirmar dispositivo",
+            $"Se va a {choice.ToLowerInvariant()} el dispositivo {instanceId}. Si es esencial, el equipo podría dejar de responder. ¿Continuar?")) return;
         var command = choice == "Habilitar" ? "Enable-PnpDevice" : "Disable-PnpDevice";
         var escaped = instanceId.Replace("'", "''");
-        await context.RunCommandAsync("powershell",
-            $"-NoProfile -Command \"{command} -InstanceId '{escaped}' -Confirm:$false\"", token);
+        await context.RunPowerShellAsync($"{command} -InstanceId '{escaped}' -Confirm:$false", token);
     }
 
     private static List<Dictionary<string, object?>> WmiQuery(AppHost host, string wql)

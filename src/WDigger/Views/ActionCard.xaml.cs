@@ -68,8 +68,8 @@ public sealed partial class ActionCard : UserControl
     {
         if (_viewModel is not null)
         {
-            RunButton.IsEnabled = !_viewModel.IsRunning;
-            RunButton.Content = _viewModel.IsRunning ? "Ejecutando…" : "Ejecutar";
+            RunButton.IsEnabled = _viewModel.IsAvailable && !_viewModel.IsRunning;
+            RunButton.Content = _viewModel.IsRunning ? "Ejecutando…" : _viewModel.IsAvailable ? "Ejecutar" : "No disponible";
         }
     }
 

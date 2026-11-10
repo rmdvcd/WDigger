@@ -107,11 +107,13 @@ public sealed class DialogService
         return items[list.SelectedIndex];
     }
 
-    public async Task<bool> ConfirmAsync(string title, string message, string primaryText = "Continuar")
+    public async Task<bool> ConfirmAsync(string title, string message, string primaryText = "Continuar", bool requireAcknowledgement = false)
     {
         var panel = new StackPanel { Spacing = 12, MaxWidth = 430 };
         panel.Children.Add(new FontIcon { Glyph = "\uE7BA", FontSize = 26, HorizontalAlignment = HorizontalAlignment.Left });
         panel.Children.Add(new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap });
+        var acknowledgement = new CheckBox { Content = "Entiendo las consecuencias", Visibility = requireAcknowledgement ? Visibility.Visible : Visibility.Collapsed };
+        panel.Children.Add(acknowledgement);
 
         var dialog = new ContentDialog
         {
@@ -120,8 +122,14 @@ public sealed class DialogService
             Content = panel,
             PrimaryButtonText = primaryText,
             CloseButtonText = "Cancelar",
-            DefaultButton = ContentDialogButton.Close
+            DefaultButton = ContentDialogButton.Close,
+            IsPrimaryButtonEnabled = !requireAcknowledgement
         };
+        if (requireAcknowledgement)
+        {
+            acknowledgement.Checked += (_, _) => dialog.IsPrimaryButtonEnabled = true;
+            acknowledgement.Unchecked += (_, _) => dialog.IsPrimaryButtonEnabled = false;
+        }
 
         return await dialog.ShowAsync() == ContentDialogResult.Primary;
     }
@@ -159,6 +167,15 @@ public sealed class DialogService
 
         WinRT.Interop.InitializeWithWindow.Initialize(picker, WindowHandle);
         var file = await picker.PickSingleFileAsync();
+        return file?.Path;
+    }
+
+    public async Task<string?> PickSaveFileAsync(string suggestedName, string extension)
+    {
+        var picker = new FileSavePicker { SuggestedFileName = suggestedName, SuggestedStartLocation = PickerLocationId.DocumentsLibrary };
+        picker.FileTypeChoices.Add("Documento de texto", new List<string> { extension });
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, WindowHandle);
+        var file = await picker.PickSaveFileAsync();
         return file?.Path;
     }
 

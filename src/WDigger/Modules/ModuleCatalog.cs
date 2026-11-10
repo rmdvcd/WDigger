@@ -12,6 +12,7 @@ public static class ModuleCatalog
 
     public static IReadOnlyList<Entry> Create() => new[]
     {
+        new Entry("diagnostics", new DiagnosticsModule(), "\uE9D9"),
         new Entry("hardware", new HardwareModule(), "\uE950"),
         new Entry("repair", new RepairModule(), "\uE90F"),
         new Entry("software", new SoftwareModule(), "\uE71D"),
