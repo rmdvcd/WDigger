@@ -74,35 +74,49 @@ public sealed class SensorService
 
     private static void Collect(IHardware hardware, List<SensorReading> results)
     {
-        // Update() pulls fresh values from the underlying hardware. Some items
-        // (e.g. certain SM controllers) throw on update; skip them silently.
-        try
+        // Use an explicit worklist and identity tracking so a cyclic or unusually
+        // deep hardware tree cannot overflow the process stack.
+        var pending = new Stack<IHardware>();
+        var visited = new HashSet<IHardware>(ReferenceEqualityComparer.Instance);
+        pending.Push(hardware);
+        while (pending.Count > 0)
         {
-            hardware.Update();
-        }
-        catch
-        {
-            // Ignore update failures for individual hardware nodes.
-        }
-
-        foreach (var sensor in hardware.Sensors)
-        {
-            results.Add(new SensorReading
+            var current = pending.Pop();
+            if (!visited.Add(current))
             {
-                Hardware = hardware.Name,
-                HardwareType = hardware.HardwareType.ToString(),
-                SensorName = sensor.Name,
-                SensorType = sensor.SensorType.ToString(),
-                Value = sensor.Value.HasValue
-                    ? sensor.Value.Value.ToString("0.##", CultureInfo.InvariantCulture)
-                    : null,
-                Unit = UnitFor(sensor.SensorType)
-            });
-        }
+                continue;
+            }
 
-        foreach (var sub in hardware.SubHardware)
-        {
-            Collect(sub, results);
+            // Some controllers throw on update; still try their sensors.
+            try
+            {
+                current.Update();
+            }
+            catch
+            {
+                // Ignore update failures for individual hardware nodes.
+            }
+
+            foreach (var sensor in current.Sensors)
+            {
+                results.Add(new SensorReading
+                {
+                    Hardware = current.Name,
+                    HardwareType = current.HardwareType.ToString(),
+                    SensorName = sensor.Name,
+                    SensorType = sensor.SensorType.ToString(),
+                    Value = sensor.Value.HasValue
+                        ? sensor.Value.Value.ToString("0.##", CultureInfo.InvariantCulture)
+                        : null,
+                    Unit = UnitFor(sensor.SensorType)
+                });
+            }
+
+            // Reverse the push order to keep the previous depth-first ordering.
+            foreach (var sub in current.SubHardware.Reverse())
+            {
+                pending.Push(sub);
+            }
         }
     }
 

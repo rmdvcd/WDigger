@@ -297,7 +297,12 @@ public sealed partial class ShellWindow : Window
 
     public void SetStatus(string message)
     {
-        if (_closing || !DispatcherQueue.HasThreadAccess)
+        if (_closing)
+        {
+            return;
+        }
+
+        if (!DispatcherQueue.HasThreadAccess)
         {
             DispatcherQueue.TryEnqueue(() => SetStatus(message));
             return;
@@ -315,7 +320,12 @@ public sealed partial class ShellWindow : Window
 
     public void ReportProgress(int? percent = null)
     {
-        if (_closing || !DispatcherQueue.HasThreadAccess)
+        if (_closing)
+        {
+            return;
+        }
+
+        if (!DispatcherQueue.HasThreadAccess)
         {
             DispatcherQueue.TryEnqueue(() => ReportProgress(percent));
             return;
@@ -343,7 +353,12 @@ public sealed partial class ShellWindow : Window
 
     public void ShowActivity()
     {
-        if (_closing || !DispatcherQueue.HasThreadAccess)
+        if (_closing)
+        {
+            return;
+        }
+
+        if (!DispatcherQueue.HasThreadAccess)
         {
             DispatcherQueue.TryEnqueue(ShowActivity);
             return;
@@ -362,7 +377,12 @@ public sealed partial class ShellWindow : Window
 
     public void ShowTable(string title, IReadOnlyList<string> columns, IEnumerable<string[]> rows)
     {
-        if (_closing || !DispatcherQueue.HasThreadAccess)
+        if (_closing)
+        {
+            return;
+        }
+
+        if (!DispatcherQueue.HasThreadAccess)
         {
             DispatcherQueue.TryEnqueue(() => ShowTable(title, columns, rows));
             return;
