@@ -19,7 +19,7 @@ namespace WDigger.UI;
 /// </summary>
 public sealed partial class ShellWindow : Window
 {
-    internal const string AppVersion = "2.0.0";
+    internal const string AppVersion = "3.0.0";
 
     private readonly AppHost _host;
     private readonly AppSettings _settings;
@@ -33,6 +33,7 @@ public sealed partial class ShellWindow : Window
     private bool _isBusy;
     private bool _closing;
     private bool _outputCollapsed;
+    private readonly object _operationLock = new();
 
     public DialogService Dialogs { get; }
 
@@ -85,10 +86,13 @@ public sealed partial class ShellWindow : Window
         Closed += OnClosed;
 
         var dashboard = NavView.MenuItems.OfType<NavigationViewItem>()
-            .First(item => string.Equals(item.Tag as string, "dashboard", StringComparison.OrdinalIgnoreCase));
-        _lastContentItem = dashboard;
-        NavView.SelectedItem = dashboard;
-        PageHost.Content = new DashboardPage(this);
+            .FirstOrDefault(item => string.Equals(item.Tag as string, "dashboard", StringComparison.OrdinalIgnoreCase));
+        if (dashboard is not null)
+        {
+            _lastContentItem = dashboard;
+            NavView.SelectedItem = dashboard;
+            PageHost.Content = new DashboardPage(this);
+        }
 
         ShowWelcome();
     }
@@ -97,7 +101,7 @@ public sealed partial class ShellWindow : Window
 
     private void NavView_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
-        if (args.SelectedItemContainer is not NavigationViewItem item)
+        if (_closing || args.SelectedItemContainer is not NavigationViewItem item)
         {
             return;
         }
@@ -135,6 +139,11 @@ public sealed partial class ShellWindow : Window
     /// <summary>Navigate programmatically (used by dashboard quick actions).</summary>
     public void NavigateToTag(string tag)
     {
+        if (_closing)
+        {
+            return;
+        }
+
         var item = NavView.MenuItems.OfType<NavigationViewItem>()
             .Concat(NavView.FooterMenuItems.OfType<NavigationViewItem>())
             .FirstOrDefault(entry => string.Equals(entry.Tag as string, tag, StringComparison.OrdinalIgnoreCase));
@@ -146,9 +155,19 @@ public sealed partial class ShellWindow : Window
 
     private void RestoreContentSelection()
     {
+        if (_closing || _lastContentItem is null)
+        {
+            return;
+        }
+
         DispatcherQueue.TryEnqueue(() =>
         {
-            if (_lastContentItem is not null && !ReferenceEquals(NavView.SelectedItem, _lastContentItem))
+            if (_closing)
+            {
+                return;
+            }
+
+            if (!ReferenceEquals(NavView.SelectedItem, _lastContentItem))
             {
                 NavView.SelectedItem = _lastContentItem;
             }
@@ -180,7 +199,14 @@ public sealed partial class ShellWindow : Window
         };
         if (persist)
         {
-            _settings.Save(_host.ConfigDirectory);
+            try
+            {
+                _settings.Save(_host.ConfigDirectory);
+            }
+            catch
+            {
+                // Best effort; settings persistence is not critical.
+            }
         }
 
         UpdateThemeLabel();
@@ -201,7 +227,15 @@ public sealed partial class ShellWindow : Window
     {
         _host.DryRun = DryRunSwitch.IsOn;
         _settings.DryRun = _host.DryRun;
-        _settings.Save(_host.ConfigDirectory);
+        try
+        {
+            _settings.Save(_host.ConfigDirectory);
+        }
+        catch
+        {
+            // Best effort.
+        }
+
         _host.Logger.Info($"Dry-run mode changed: {_host.DryRun}");
 
         if (PageHost.Content is DashboardPage dashboard)
@@ -219,14 +253,14 @@ public sealed partial class ShellWindow : Window
 
     public void AppendOutput(string message, OutputKind kind = OutputKind.Info)
     {
-        if (!DispatcherQueue.HasThreadAccess)
+        if (_closing)
         {
-            DispatcherQueue.TryEnqueue(() => AppendOutput(message, kind));
             return;
         }
 
-        if (_closing)
+        if (!DispatcherQueue.HasThreadAccess)
         {
+            DispatcherQueue.TryEnqueue(() => AppendOutput(message, kind));
             return;
         }
 
@@ -263,7 +297,7 @@ public sealed partial class ShellWindow : Window
 
     public void SetStatus(string message)
     {
-        if (!DispatcherQueue.HasThreadAccess)
+        if (_closing || !DispatcherQueue.HasThreadAccess)
         {
             DispatcherQueue.TryEnqueue(() => SetStatus(message));
             return;
@@ -281,7 +315,7 @@ public sealed partial class ShellWindow : Window
 
     public void ReportProgress(int? percent = null)
     {
-        if (!DispatcherQueue.HasThreadAccess)
+        if (_closing || !DispatcherQueue.HasThreadAccess)
         {
             DispatcherQueue.TryEnqueue(() => ReportProgress(percent));
             return;
@@ -309,7 +343,7 @@ public sealed partial class ShellWindow : Window
 
     public void ShowActivity()
     {
-        if (!DispatcherQueue.HasThreadAccess)
+        if (_closing || !DispatcherQueue.HasThreadAccess)
         {
             DispatcherQueue.TryEnqueue(ShowActivity);
             return;
@@ -328,14 +362,9 @@ public sealed partial class ShellWindow : Window
 
     public void ShowTable(string title, IReadOnlyList<string> columns, IEnumerable<string[]> rows)
     {
-        if (!DispatcherQueue.HasThreadAccess)
+        if (_closing || !DispatcherQueue.HasThreadAccess)
         {
             DispatcherQueue.TryEnqueue(() => ShowTable(title, columns, rows));
-            return;
-        }
-
-        if (_closing)
-        {
             return;
         }
 
@@ -400,78 +429,116 @@ public sealed partial class ShellWindow : Window
 
     private void CancelOperationButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_operationCts is null || _operationCts.IsCancellationRequested)
+        lock (_operationLock)
         {
-            return;
-        }
+            if (_operationCts is null || _operationCts.IsCancellationRequested)
+            {
+                return;
+            }
 
-        CancelOperationButton.IsEnabled = false;
-        SetStatus("Cancelando; espera a que finalice el proceso...");
-        _operationCts.Cancel();
+            CancelOperationButton.IsEnabled = false;
+            SetStatus("Cancelando; espera a que finalice el proceso...");
+            _operationCts.Cancel();
+        }
     }
 
     // ───────────────────────────── action execution ─────────────────────────────
 
     public async Task RunActionAsync(ModuleAction action)
     {
-        if (_isBusy)
+        lock (_operationLock)
         {
-            return;
-        }
-
-        if (action.ChangesSystem && !_host.DryRun)
-        {
-            var message = action.Confirmation
-                ?? "Esta acción puede modificar Windows. Revisa la descripción antes de continuar.";
-            var confirmed = await Dialogs.ConfirmAsync(
-                "Confirmar cambios en el sistema",
-                $"{message}\n\n¿Quieres ejecutar «{action.Title}» en el sistema real?",
-                "Ejecutar");
-            if (!confirmed)
+            if (_isBusy || _closing)
             {
                 return;
             }
-        }
 
-        var operation = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
-        _operationCts = operation;
-        var context = new ModuleExecutionContext(this, _host);
-
-        SetBusy(true, $"Ejecutando: {action.Title}...");
-        AppendOutput(string.Empty, OutputKind.Muted);
-        AppendOutput($"═══ {action.Title} ═══", OutputKind.Command);
-        if (action.ChangesSystem && _host.DryRun)
-        {
-            AppendOutput("Modo simulación activo: no se aplicarán cambios reales.", OutputKind.Warning);
+            _isBusy = true;
         }
 
         try
         {
-            await action.Execute(context, operation.Token);
-            if (!operation.IsCancellationRequested)
+            if (action.ChangesSystem && !_host.DryRun)
             {
-                SetStatus("Acción finalizada");
-                AppendOutput("Acción finalizada.", OutputKind.Success);
+                var message = action.Confirmation
+                    ?? "Esta acción puede modificar Windows. Revisa la descripción antes de continuar.";
+                var confirmed = await Dialogs.ConfirmAsync(
+                    "Confirmar cambios en el sistema",
+                    $"{message}\n\n¿Quieres ejecutar «{action.Title}» en el sistema real?",
+                    "Ejecutar");
+                if (!confirmed)
+                {
+                    return;
+                }
             }
-        }
-        catch (OperationCanceledException)
-        {
-            SetStatus("Operación cancelada");
-            AppendOutput("Operación cancelada por el usuario.", OutputKind.Warning);
-        }
-        catch (Exception exception)
-        {
-            _host.Logger.Error($"Action '{action.Title}' failed: {exception}");
-            SetStatus("La acción produjo un error");
-            AppendOutput(exception.ToString(), OutputKind.Error);
-            await Dialogs.ShowMessageAsync("Error al ejecutar la acción", exception.Message);
+
+            var operation = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+            CancellationTokenSource? previousCts = null;
+            lock (_operationLock)
+            {
+                previousCts = _operationCts;
+                _operationCts = operation;
+            }
+            previousCts?.Dispose();
+
+            var context = new ModuleExecutionContext(this, _host);
+
+            SetBusy(true, $"Ejecutando: {action.Title}...");
+            AppendOutput(string.Empty, OutputKind.Muted);
+            AppendOutput($"═══ {action.Title} ═══", OutputKind.Command);
+            if (action.ChangesSystem && _host.DryRun)
+            {
+                AppendOutput("Modo simulación activo: no se aplicarán cambios reales.", OutputKind.Warning);
+            }
+
+            try
+            {
+                await action.Execute(context, operation.Token);
+                if (!operation.IsCancellationRequested)
+                {
+                    SetStatus("Acción finalizada");
+                    AppendOutput("Acción finalizada.", OutputKind.Success);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                SetStatus("Operación cancelada");
+                AppendOutput("Operación cancelada por el usuario.", OutputKind.Warning);
+            }
+            catch (Exception exception)
+            {
+                _host.Logger.Error($"Action '{action.Title}' failed: {exception}");
+                SetStatus("La acción produjo un error");
+                AppendOutput(exception.ToString(), OutputKind.Error);
+                try
+                {
+                    await Dialogs.ShowMessageAsync("Error al ejecutar la acción", exception.Message);
+                }
+                catch
+                {
+                    // Dialog failure must not crash the app.
+                }
+            }
+            finally
+            {
+                lock (_operationLock)
+                {
+                    if (ReferenceEquals(_operationCts, operation))
+                    {
+                        _operationCts = null;
+                    }
+                }
+                operation.Dispose();
+                ReportProgress(100);
+                SetBusy(false, "Listo");
+            }
         }
         finally
         {
-            _operationCts = null;
-            operation.Dispose();
-            ReportProgress(100);
-            SetBusy(false, "Listo");
+            lock (_operationLock)
+            {
+                _isBusy = false;
+            }
         }
     }
 
@@ -515,7 +582,7 @@ public sealed partial class ShellWindow : Window
             });
             panel.Children.Add(new TextBlock
             {
-                Text = "Portable · .NET 8 · WinUI 3 (Windows App SDK) · Siempre elevada con requireAdministrator",
+                Text = "Portable · .NET 10 · WinUI 3 (Windows App SDK) · Siempre elevada con requireAdministrator",
                 TextWrapping = TextWrapping.Wrap,
                 Foreground = textBrush
             });
@@ -560,6 +627,13 @@ public sealed partial class ShellWindow : Window
         catch
         {
             // Best effort.
+        }
+
+        lock (_operationLock)
+        {
+            _operationCts?.Cancel();
+            _operationCts?.Dispose();
+            _operationCts = null;
         }
 
         try

@@ -23,7 +23,7 @@
                     <FontIcon Glyph="&#xE90F;" FontSize="13" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" />
                 </Border>
                 <TextBlock Text="WDigger" FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center" />
-                <TextBlock Text="Diagnóstico y reparación de Windows · Portable" FontSize="11"
+                <TextBlock Text="Diagnóstico y reparación de Windows · Portable v3.0" FontSize="11"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
             </StackPanel>
 
@@ -50,6 +50,7 @@
                         PaneDisplayMode="Left"
                         IsBackButtonVisible="Collapsed"
                         OpenPaneLength="276"
+                        CompactPaneLength="48"
                         AlwaysShowHeader="False"
                         SelectionChanged="NavView_SelectionChanged">
 

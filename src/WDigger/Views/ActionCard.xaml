@@ -39,8 +39,8 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <Border HorizontalAlignment="Left" VerticalAlignment="Center" CornerRadius="8" Padding="8,3,9,3"
-                        Background="{Binding BadgeBackground}">
-                    <TextBlock Text="{Binding BadgeText}" FontSize="10" FontWeight="SemiBold"
+                        Background="{Binding RunningBadgeBackground}">
+                    <TextBlock Text="{Binding RunningBadgeText}" FontSize="10" FontWeight="SemiBold"
                                Foreground="{Binding BadgeForeground}" CharacterSpacing="40" />
                 </Border>
                 <Button x:Name="RunButton" Grid.Column="1" Content="Ejecutar"

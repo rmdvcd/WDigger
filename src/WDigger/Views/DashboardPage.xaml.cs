@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -14,6 +15,7 @@ namespace WDigger.Views;
 public sealed partial class DashboardPage : UserControl
 {
     private readonly ShellWindow _shell;
+    private readonly ObservableCollection<SensorSummaryItem> _sensors = new();
 
     public DashboardPage(ShellWindow shell)
     {
@@ -25,12 +27,16 @@ public sealed partial class DashboardPage : UserControl
         ConfigFolderText.Text = _shell.Host.ConfigDirectory;
 
         DryRunBanner.IsOpen = _shell.Host.DryRun;
+        SensorSummary.ItemsSource = _sensors;
+
         _ = LoadAsync();
     }
 
     internal void SetDryRunBanner(bool dryRun) => DryRunBanner.IsOpen = dryRun;
 
     private async void RefreshButton_Click(object sender, RoutedEventArgs e) => await LoadAsync();
+
+    private async void OpenSensorsButton_Click(object sender, RoutedEventArgs e) => _shell.NavigateToTag("hardware");
 
     private async Task LoadAsync()
     {
@@ -67,6 +73,36 @@ public sealed partial class DashboardPage : UserControl
             {
                 DiskValue.Text = "n/a";
                 DiskUsedBar.Value = 0;
+            }
+
+            // Cargar sensores resumen (mejor esfuerzo, sin bloquear)
+            _sensors.Clear();
+            try
+            {
+                var readings = await Task.Run(() => _shell.Host.Sensors.ReadAll());
+                var important = readings
+                    .Where(r => r.Value is not null)
+                    .Where(r =>
+                        r.SensorType.Equals("Temperature", StringComparison.OrdinalIgnoreCase) ||
+                        r.SensorType.Equals("Load", StringComparison.OrdinalIgnoreCase) ||
+                        r.SensorType.Equals("Clock", StringComparison.OrdinalIgnoreCase) ||
+                        r.SensorType.Equals("Fan", StringComparison.OrdinalIgnoreCase))
+                    .Take(8)
+                    .ToList();
+
+                foreach (var r in important)
+                {
+                    _sensors.Add(new SensorSummaryItem
+                    {
+                        Label = $"{r.Hardware} · {r.SensorName}",
+                        Value = r.Value ?? "n/a",
+                        Unit = r.Unit
+                    });
+                }
+            }
+            catch
+            {
+                // Sensores son opcionales; no bloquear el dashboard.
             }
         }
         catch (Exception exception)
@@ -107,4 +143,12 @@ public sealed partial class DashboardPage : UserControl
             // Explorer is always present on Windows; ignore failures.
         }
     }
+}
+
+/// <summary>Un resumen de sensor para mostrar en el dashboard.</summary>
+public sealed class SensorSummaryItem
+{
+    public string Label { get; set; } = "";
+    public string Value { get; set; } = "";
+    public string Unit { get; set; } = "";
 }

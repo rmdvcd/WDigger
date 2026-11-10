@@ -1,3 +1,4 @@
+using System.Linq;
 using WDigger.Core;
 using WDigger.Models;
 using WDigger.UI;
@@ -91,17 +92,14 @@ public sealed class SoftwareModule : IModule
         {
             return;
         }
-        await context.RunCommandAsync("winget", $"search \"{Escape(query)}\" --accept-source-agreements", token);
+        await context.RunCommandAsync("winget", $"search {EscapeForWinget(query)} --accept-source-agreements", token);
     }
 
     private static async Task RemoveAppxAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
     {
         _ = host;
         var pattern = await context.PromptAsync("Quitar paquete Appx", "Patrón del nombre (por ejemplo, *Weather*):");
-        if (pattern is null)
-        {
-            return;
-        }
+        if (pattern is null) return;
 
         var escaped = pattern.Replace("'", "''");
         await context.RunCommandAsync("powershell",
@@ -122,5 +120,10 @@ public sealed class SoftwareModule : IModule
             ? $"install {package.Id} {package.Arguments} -y"
             : $"install \"{package.Id}\" {package.Arguments} --silent --accept-package-agreements --accept-source-agreements";
 
-    private static string Escape(string value) => value.Replace("\"", "\\\"");
+    /// <summary>Escapes a query for safe use as a winget argument (no surrounding quotes).</summary>
+    private static string EscapeForWinget(string value)
+    {
+        var sanitized = string.Concat(value.Where(c => !"<>&|;\"'".Contains(c))).Trim();
+        return string.IsNullOrWhiteSpace(sanitized) ? "*" : sanitized;
+    }
 }

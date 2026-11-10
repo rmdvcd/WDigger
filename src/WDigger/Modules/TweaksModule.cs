@@ -60,6 +60,7 @@ public sealed class TweaksModule : IModule
 
         for (var index = 0; index < tweak.Actions.Count; index++)
         {
+            token.ThrowIfCancellationRequested();
             await ExecuteActionAsync(context, tweak.Actions[index], token);
             context.ReportProgress((index + 1) * 100 / tweak.Actions.Count);
         }
@@ -111,6 +112,7 @@ public sealed class TweaksModule : IModule
 
         foreach (var action in tweak.Rollback)
         {
+            token.ThrowIfCancellationRequested();
             await ExecuteActionAsync(context, action, token);
         }
 
@@ -143,7 +145,7 @@ public sealed class TweaksModule : IModule
 
     private static Task<CommandResult> ExecuteActionAsync(
         ModuleExecutionContext context, TweakAction action, CancellationToken token)
-        => context.RunCommandAsync("cmd", $"/c \"{FormatAction(action)}\"", token);
+        => context.RunCommandAsync("cmd", $"/c \"{EscapeForCmd(FormatAction(action))}\"", token);
 
     private static string FormatAction(TweakAction action)
         => action.Type.Equals("registry", StringComparison.OrdinalIgnoreCase)
@@ -159,4 +161,14 @@ public sealed class TweaksModule : IModule
         "Binary" => "REG_BINARY",
         _ => "REG_DWORD"
     };
+
+    /// <summary>
+    /// Escapes a command line for safe use inside cmd /c "...".
+    /// </summary>
+    private static string EscapeForCmd(string command)
+    {
+        // Replace each " with \" and each \ before a " with \\
+        var result = command.Replace("\\", "\\\\").Replace("\"", "\\\"");
+        return result;
+    }
 }

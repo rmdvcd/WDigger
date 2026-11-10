@@ -1,5 +1,5 @@
+using System.Net;
 using WDigger.Core;
-using WDigger.Models;
 using WDigger.UI;
 
 namespace WDigger.Modules;
@@ -46,18 +46,24 @@ public sealed class NetworkModule : IModule
         var adapter = await context.PromptAsync("Configurar DNS", "Nombre exacto del adaptador (por ejemplo, Ethernet o Wi-Fi):");
         if (adapter is null) return;
         var primary = await context.PromptAsync("Configurar DNS", "Servidor DNS principal (por ejemplo, 1.1.1.1):");
-        if (primary is null) return;
+        if (primary is null || !IsValidIp(primary)) return;
         var secondary = await context.PromptAsync("Configurar DNS", "Servidor DNS secundario (opcional):", allowEmpty: true);
         if (secondary is null) return;
 
         await context.RunCommandAsync("netsh",
             $"interface ip set dns name=\"{adapter}\" static {primary} primary", token);
-        if (!string.IsNullOrWhiteSpace(secondary))
+        if (!string.IsNullOrWhiteSpace(secondary) && IsValidIp(secondary))
         {
             await context.RunCommandAsync("netsh",
                 $"interface ip add dns name=\"{adapter}\" {secondary} index=2", token);
         }
-        context.WriteLine($"DNS configurado en «{adapter}».", OutputKind.Success);
+        context.WriteLine($"DNS configurado en «{adapter}\".", OutputKind.Success);
+    }
+
+    private static bool IsValidIp(string? ip)
+    {
+        if (string.IsNullOrWhiteSpace(ip)) return false;
+        return IPAddress.TryParse(ip.Trim(), out _);
     }
 
     private static Task<CommandResult> Run(
