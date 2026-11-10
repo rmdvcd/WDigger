@@ -14,7 +14,8 @@ public sealed class NetworkModule : IModule
     public IReadOnlyList<ModuleAction> CreateActions(AppHost host) => new[]
     {
         new ModuleAction("Vaciar caché DNS", "Ejecuta ipconfig /flushdns.",
-            (context, token) => Run(host, context, token, "ipconfig", "/flushdns"), changesSystem: true),
+            (context, token) => context.RunArgumentsAsync("ipconfig", new[] { "/flushdns" }, token), changesSystem: true,
+            confirmation: "Se borrará la caché DNS local; las aplicaciones pueden volver a consultar sus servidores DNS.", allowedInElevatedSession: true),
         new ModuleAction("Liberar y renovar IP", "Libera y renueva la configuración DHCP de los adaptadores.",
             (context, token) => ReleaseRenewAsync(host, context, token), changesSystem: true,
             confirmation: "La conexión de red se interrumpirá temporalmente."),

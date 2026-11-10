@@ -4,17 +4,27 @@ WDigger es una herramienta portable WinUI 3 de diagnóstico y reparación de Win
 
 ## Permisos y operaciones reales
 
-La interfaz arranca con los permisos del usuario (`asInvoker`). El diagnóstico no necesita elevación. Para utilizar las tres operaciones reales habilitadas, abre explícitamente WDigger **como administrador**. Esto eleva toda la aplicación: todavía no existe un auxiliar aislado. Las operaciones de terceros y configuraciones editables no están autorizadas para cambios reales.
+La interfaz arranca con los permisos del usuario (`asInvoker`). El diagnóstico no necesita elevación. Para utilizar las operaciones reales habilitadas, abre explícitamente WDigger **como administrador**. Esto eleva toda la aplicación: todavía no existe un auxiliar aislado. Las operaciones de terceros y configuraciones editables no están autorizadas para cambios reales.
 
 | Operación | Estado actual |
 |---|---|
 | SFC `/scannow` | Disponible en sesión elevada, tras confirmación. |
 | DISM `/Online /Cleanup-Image /RestoreHealth` | Disponible en sesión elevada, tras confirmación. Puede utilizar Windows Update. |
-| CHKDSK `/scan` en el volumen del sistema | Disponible en sesión elevada, tras confirmación. Windows puede hacer correcciones o solicitar un reinicio. |
+| CHKDSK `/scan` en el volumen del sistema u otra unidad seleccionada | Disponible en sesión elevada, tras confirmación. Windows puede hacer correcciones o solicitar un reinicio. |
+| Windows Update | Renombra las dos cachés, conserva las carpetas anteriores e intenta restaurar los servicios activos originalmente, también ante errores. No garantiza recuperación tras cierre forzado. |
+| Ajustes de registro | Tres ajustes fijos: telemetría, Cortana e inicio rápido. Se registra el DWORD previo y se permite revertirlo si no ha cambiado externamente. No se ejecutan comandos del JSON editable. |
+| Retirar Appx | Selección de un paquete exacto del usuario de la sesión elevada; no afecta paquetes provisionados ni otros usuarios. No se garantiza reinstalación ni recuperación de datos. |
+| Vaciar caché DNS y activar Windows | Disponibles en sesión elevada. La activación utiliza la licencia ya configurada. |
 | Otras acciones modificadoras | Solo simulación; no disponibles en modo real. |
-| Ajustes JSON, reparación de Windows Update, restauración Acronis, WinFR, eliminación Appx | Suspendidos, también en simulación, hasta su rediseño. |
+| Restauración Acronis y WinFR | Suspendidas, también en simulación, hasta poder verificar herramientas y destinos físicos. |
 
-Las acciones reales habilitadas usan ejecutables de Windows resueltos desde System32 y argumentos fijos; requieren registro persistente y un intento de creación y verificación de punto de restauración. Si este falla, se pide autorización explícita para continuar sin él. **Un punto de restauración no garantiza rollback y no sustituye una copia de seguridad.** Guarda el trabajo, realiza una copia y mantén alimentación estable antes de ejecutar. Estas operaciones no ofrecen cancelación en la UI: un apagado o cierre forzado puede dejar cambios parciales. El resultado del comando no garantiza por sí solo que Windows esté sano.
+Las acciones reales habilitadas usan código y herramientas de Windows, no comandos de configuración editable; requieren registro persistente y un intento de creación y verificación de punto de restauración. Si este falla, se pide autorización explícita para continuar sin él. **Un punto de restauración no garantiza rollback y no sustituye una copia de seguridad.** Guarda el trabajo, realiza una copia y mantén alimentación estable antes de ejecutar. Algunas operaciones no ofrecen cancelación en la UI; un apagado o cierre forzado puede dejar cambios parciales. El resultado del comando no garantiza por sí solo que Windows esté sano.
+
+### Recuperación de ajustes y Windows Update
+
+Los ajustes de registro están limitados a un catálogo fijo y guardan una copia en `HKLM\SOFTWARE\WDigger\RegistryUndo` antes de escribir. La reversión comprueba que el valor siga siendo el aplicado. Una copia incompleta, un cambio externo o una interrupción pueden requerir revisión manual; las claves vacías creadas durante la aplicación no se eliminan. Los ajustes heredados no tienen copia previa. Las directivas de una organización pueden sustituir los cambios.
+
+Windows Update conserva las carpetas renombradas con sufijo `.WDigger-<id>`. Si hay error, intenta devolver los nombres originales y arrancar los servicios que estaban activos. Si una interrupción impide completar la recuperación o se informa de error, revisa manualmente los servicios y las carpetas originales y de copia antes de modificar nada; **no se ofrece rollback transaccional ni recuperación automática tras un apagado**. No borres las copias hasta verificar el funcionamiento.
 
 ## Diagnóstico y privacidad
 

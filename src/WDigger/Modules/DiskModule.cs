@@ -16,9 +16,9 @@ public sealed class DiskModule : IModule
         new ModuleAction("Limpiar archivos temporales", "Elimina el contenido de %TEMP%; omite archivos en uso.",
             (context, token) => CleanTempFilesAsync(host, context, token), changesSystem: true,
             confirmation: "Se eliminarán archivos temporales. Cierra las aplicaciones abiertas antes de continuar."),
-        new ModuleAction("Analizar una unidad", "Ejecuta CHKDSK /scan /perf en la letra de unidad indicada.",
+        new ModuleAction("Analizar una unidad", "Ejecuta CHKDSK /scan en la letra de unidad indicada.",
             (context, token) => ScanDriveAsync(host, context, token), changesSystem: true,
-            confirmation: "El análisis puede detectar errores y programar operaciones para el próximo reinicio.", canCancel: false)
+            confirmation: "El análisis puede corregir errores o programar operaciones para el próximo reinicio.", canCancel: false, allowedInElevatedSession: true)
     };
 
     private static Task<CommandResult> ShowDiskSpaceAsync(
@@ -43,11 +43,13 @@ public sealed class DiskModule : IModule
         var input = await context.PromptAsync("Analizar unidad", "Letra de unidad:", "C");
         if (input is null) return;
         var drive = input.TrimEnd(':').Trim();
-        if (drive.Length != 1 || !char.IsLetter(drive[0]))
+        if (drive.Length != 1 || !((drive[0] >= 'A' && drive[0] <= 'Z') || (drive[0] >= 'a' && drive[0] <= 'z')))
         {
             context.WriteLine("Escribe una única letra de unidad válida, por ejemplo C o D.", OutputKind.Warning);
             return;
         }
-        await context.RunCommandAsync("chkdsk", $"/scan /perf {drive.ToUpperInvariant()}:", token);
+        var target = $"{drive.ToUpperInvariant()}:";
+        if (!await context.ConfirmAsync("Confirmar volumen", $"CHKDSK analizará {target} y podría realizar correcciones. No apagues el equipo. ¿Continuar?")) return;
+        await context.RunArgumentsAsync("chkdsk", new[] { target, "/scan" }, token);
     }
 }

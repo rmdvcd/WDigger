@@ -36,15 +36,72 @@ public sealed class RepairModule : IModule
         new ModuleAction(
             "Reparar Windows Update",
             "Detiene servicios, renombra SoftwareDistribution y catroot2 y reinicia los servicios.",
-            (context, token) => Task.CompletedTask,
+            (context, token) => ResetWindowsUpdateAsync(context, token),
             changesSystem: true,
-            unavailableReason: "Suspendida hasta garantizar la recuperación de servicios ante errores o cancelación."),
+            confirmation: "Se detendrán temporalmente servicios de Windows Update y se renombrarán las cachés. Conserva una copia de seguridad y no apagues el equipo.",
+            canCancel: false, allowedInElevatedSession: true),
         new ModuleAction(
             "Restablecer caché de Winget",
             "Fuerza el restablecimiento de los orígenes de paquetes de Winget.",
             (context, token) => RunCommand(host, context, token, "winget", "source reset --force"),
             changesSystem: true)
     };
+
+    private static Task<CommandResult> ResetWindowsUpdateAsync(ModuleExecutionContext context, CancellationToken token)
+    {
+        var windows = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+        if (string.IsNullOrWhiteSpace(windows)) throw new InvalidOperationException("No se pudo identificar la carpeta de Windows.");
+        var script = """
+            $services = @('wuauserv', 'bits', 'cryptsvc')
+            $running = @()
+            foreach ($name in $services) {
+                $s = Get-Service -Name $name -ErrorAction Stop
+                if ($s.Status -notin @('Running','Stopped')) { throw "Servicio $name en estado transitorio; no se modifica nada." }
+                if ($s.Status -eq 'Running') { $running += $name }
+            }
+            $directories = @((Join-Path '__WINDOWS__' 'SoftwareDistribution'), (Join-Path '__WINDOWS__' 'System32\catroot2'))
+            foreach ($path in $directories) {
+                if (-not (Test-Path -LiteralPath $path -PathType Container)) { throw "Falta la carpeta $path; no se modifica nada." }
+                if ((Get-Item -LiteralPath $path -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw "Carpeta redirigida: $path; no se modifica nada." }
+            }
+            $renamed = @()
+            $failure = $null
+            try {
+                foreach ($name in $running) {
+                    Stop-Service -Name $name -ErrorAction Stop
+                    (Get-Service -Name $name).WaitForStatus('Stopped', [TimeSpan]::FromMinutes(2))
+                }
+                foreach ($path in $directories) {
+                    $backup = $path + '.WDigger-' + [guid]::NewGuid().ToString('N')
+                    Move-Item -LiteralPath $path -Destination $backup -ErrorAction Stop
+                    $renamed += @{ Original = $path; Backup = $backup }
+                    Write-Output "Copia conservada: $backup"
+                }
+            } catch {
+                $failure = $_.Exception.Message
+                [array]::Reverse($renamed)
+                foreach ($entry in $renamed) {
+                    try {
+                        if (Test-Path -LiteralPath $entry.Original) { throw "El destino ya existe: $($entry.Original)" }
+                        Move-Item -LiteralPath $entry.Backup -Destination $entry.Original -ErrorAction Stop
+                    } catch { $failure += "; no se pudo recuperar $($entry.Original): $($_.Exception.Message)" }
+                }
+            } finally {
+                foreach ($name in @('cryptsvc','bits','wuauserv')) {
+                    if ($running -contains $name) {
+                        try {
+                            $service = Get-Service -Name $name -ErrorAction Stop
+                            if ($service.Status -ne 'Running') { Start-Service -Name $name -ErrorAction Stop }
+                            (Get-Service -Name $name).WaitForStatus('Running', [TimeSpan]::FromMinutes(2))
+                        } catch { $failure += "; no se pudo reiniciar $name : $($_.Exception.Message)" }
+                    }
+                }
+            }
+            if ($failure) { throw "Restablecimiento incompleto: $failure. Revisa servicios y carpetas WDigger." }
+            Write-Output 'Servicios originalmente activos restaurados; las cachés anteriores se conservaron.'
+            """.Replace("__WINDOWS__", windows.Replace("'", "''"));
+        return context.RunPowerShellAsync(script, token);
+    }
 
     private static async Task RunSfcAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
     {
