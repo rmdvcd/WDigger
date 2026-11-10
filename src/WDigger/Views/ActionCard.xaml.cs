@@ -22,13 +22,7 @@ public sealed partial class ActionCard : UserControl
 
     private async void RunButton_Click(object sender, RoutedEventArgs e)
     {
-        if (DataContext is ActionCardViewModel viewModel)
-        {
-            _viewModel = viewModel;
-            viewModel.PropertyChanged += ViewModel_PropertyChanged;
-            UpdateRunButtonState();
-            await viewModel.ExecuteAsync();
-        }
+        await ExecuteAsync();
     }
 
     private async void Card_Tapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e)
@@ -38,12 +32,27 @@ public sealed partial class ActionCard : UserControl
             return;
         }
 
-        if (DataContext is ActionCardViewModel viewModel)
+        await ExecuteAsync();
+    }
+
+    private async Task ExecuteAsync()
+    {
+        if (DataContext is not ActionCardViewModel viewModel || viewModel.IsRunning)
         {
-            _viewModel = viewModel;
-            viewModel.PropertyChanged += ViewModel_PropertyChanged;
+            return;
+        }
+
+        _viewModel = viewModel;
+        viewModel.PropertyChanged += ViewModel_PropertyChanged;
+        try
+        {
             UpdateRunButtonState();
             await viewModel.ExecuteAsync();
+        }
+        finally
+        {
+            viewModel.PropertyChanged -= ViewModel_PropertyChanged;
+            _viewModel = null;
         }
     }
 
