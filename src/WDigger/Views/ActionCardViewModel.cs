@@ -22,8 +22,9 @@ public sealed class ActionCardViewModel : INotifyPropertyChanged
     private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush RunningForeground = new(
         Microsoft.UI.ColorHelper.FromArgb(0xFF, 0x8A, 0xC9, 0xFF));
 
-    public ActionCardViewModel(ModuleAction action, Func<ModuleAction, Task> run)
+    public ActionCardViewModel(ModuleAction action, Func<ModuleAction, Task> run, Action<string>? trace = null)
     {
+        _trace = trace;
         Action = action;
         Title = action.Title;
         Description = action.Description;
@@ -35,6 +36,7 @@ public sealed class ActionCardViewModel : INotifyPropertyChanged
     }
 
     private readonly Func<ModuleAction, Task> _run;
+    private readonly Action<string>? _trace;
 
     private bool _isRunning;
 
@@ -71,13 +73,16 @@ public sealed class ActionCardViewModel : INotifyPropertyChanged
             return;
         }
 
+        _trace?.Invoke($"Action card starting: {Title}");
         IsRunning = true;
         try
         {
+            _trace?.Invoke($"Action card running state set: {Title}");
             await _run(Action);
         }
         finally
         {
+            _trace?.Invoke($"Action card clearing running state: {Title}");
             IsRunning = false;
         }
     }
