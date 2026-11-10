@@ -25,6 +25,7 @@ public sealed class ModuleExecutionContext
     }
 
     public AppHost Host { get; }
+    public bool IsSimulation => _simulate;
 
     public void WriteLine(string message = "", OutputKind kind = OutputKind.Info)
         => _shell.AppendOutput(message, kind);
@@ -72,6 +73,16 @@ public sealed class ModuleExecutionContext
         // parsing cannot terminate the -Command string unexpectedly.
         var encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes("$ErrorActionPreference = 'Stop'; " + script));
         return RunArgumentsAsync("powershell", new[] { "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded }, cancellationToken);
+    }
+
+    /// <summary>For fixed inventory scripts only; remains a real read during simulation.</summary>
+    public async Task<CommandResult> RunReadOnlyPowerShellAsync(string script, CancellationToken cancellationToken)
+    {
+        var encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes("$ErrorActionPreference = 'Stop'; " + script));
+        var result = await Host.Commands.RunArgumentsAsync("powershell", new[] { "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded },
+            cancellationToken: cancellationToken, simulate: false, enforceTimeout: true);
+        if (!result.Success) throw new InvalidOperationException("La consulta de inventario falló; no se aplicarán cambios.");
+        return result;
     }
 
     public Task<CommandResult> RunArgumentsAsync(string fileName, IReadOnlyList<string> arguments, CancellationToken cancellationToken)

@@ -3,6 +3,7 @@ using System.Reflection;
 using WDigger.Core;
 using WDigger.Models;
 using WDigger.Diagnostics;
+using Microsoft.Win32;
 
 if (args.Length > 0 && args[0] == "--child")
 {
@@ -94,6 +95,59 @@ try
         catch (InvalidOperationException) { rejected = true; }
         Require(rejected, "unsafe package accepted");
     }
+    Require(AppxPackagePolicy.IsValidFullName("Microsoft.Example_1.2.3.4_x64__8wekyb3d8bbwe"), "valid Appx name rejected");
+    foreach (var invalid in new[] { "", "x' ; Remove-Item", "x/../../bad", new string('a', 256) })
+        Require(!AppxPackagePolicy.IsValidFullName(invalid), "unsafe Appx name accepted");
+    Require(RegistryTweakService.Catalog.Count == 3, "unexpected registry tweak catalog");
+    Require(RegistryTweakService.Resolve("disable_telemetry").Value == "AllowTelemetry", "registry tweak mapping changed");
+    try { RegistryTweakService.Resolve("arbitrary"); throw new Exception("unknown registry tweak accepted"); }
+    catch (InvalidOperationException) { }
+
+    if (OperatingSystem.IsWindows())
+    {
+        var sandbox = @"SOFTWARE\WDigger-test-" + Guid.NewGuid().ToString("N");
+        var tweak = RegistryTweakService.Resolve("disable_telemetry");
+        using var root = RegistryKey.OpenBaseKey(RegistryHive.CurrentUser, RegistryView.Registry64);
+        try
+        {
+            var service = new RegistryTweakService(RegistryHive.CurrentUser, sandbox + @"\undo", sandbox + @"\target\");
+            var targetPath = sandbox + @"\target\" + tweak.Key;
+            using (var key = root.CreateSubKey(targetPath, writable: true)) key.SetValue(tweak.Value, 2, RegistryValueKind.DWord);
+            service.Apply(tweak.Id);
+            Require(service.HasSnapshot(tweak.Id), "snapshot was not persisted");
+            try { service.Apply(tweak.Id); throw new Exception("duplicate application accepted"); }
+            catch (InvalidOperationException) { }
+            using (var key = root.OpenSubKey(targetPath, writable: true)!)
+            {
+                Require((int)key.GetValue(tweak.Value)! == 0, "tweak was not applied");
+                key.SetValue(tweak.Value, 3, RegistryValueKind.DWord);
+            }
+            try { service.Revert(tweak.Id); throw new Exception("external change was overwritten"); }
+            catch (InvalidOperationException) { }
+            Require(service.HasSnapshot(tweak.Id), "conflicted snapshot was deleted");
+            using (var key = root.OpenSubKey(targetPath, writable: true)!) key.SetValue(tweak.Value, 0, RegistryValueKind.DWord);
+            service.Revert(tweak.Id);
+            using (var key = root.OpenSubKey(targetPath, writable: true)!)
+            {
+                Require((int)key.GetValue(tweak.Value)! == 2, "prior value was not restored");
+                key.DeleteValue(tweak.Value);
+            }
+            service.Apply(tweak.Id);
+            service.Revert(tweak.Id);
+            using (var key = root.OpenSubKey(targetPath)!) Require(!key.GetValueNames().Contains(tweak.Value), "originally absent value was not removed");
+            Require(!service.HasSnapshot(tweak.Id), "completed snapshot was not cleared");
+            using (var key = root.OpenSubKey(targetPath, writable: true)!) key.SetValue(tweak.Value, "not a DWORD", RegistryValueKind.String);
+            try { service.Apply(tweak.Id); throw new Exception("non-DWORD value accepted"); }
+            catch (InvalidOperationException) { }
+            Require(!service.HasSnapshot(tweak.Id), "snapshot created for unsupported value");
+            using (var snapshot = root.CreateSubKey(sandbox + @"\undo\" + tweak.Id, writable: true)) snapshot.SetValue("Ready", 0, RegistryValueKind.DWord);
+            try { service.Revert(tweak.Id); throw new Exception("incomplete snapshot accepted"); }
+            catch (InvalidOperationException) { }
+            Require(service.HasSnapshot(tweak.Id), "incomplete snapshot should be retained");
+        }
+        finally { root.DeleteSubKeyTree(sandbox, throwOnMissingSubKey: false); }
+    }
+
     Require(OperationPolicy.Evaluate(true, false, true, false, true) == OperationDecision.AdministratorRequired, "missing administrator gate");
     Require(OperationPolicy.Evaluate(true, false, false, true, true) == OperationDecision.BlockedPendingReview, "unreviewed operation allowed");
     Require(OperationPolicy.Evaluate(true, false, true, true, false) == OperationDecision.AuditLogRequired, "missing persistent log allowed");

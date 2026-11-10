@@ -16,7 +16,7 @@ public sealed class ActivationModule : IModule
         new ModuleAction("Activar Windows", "Solicita activación con la clave o licencia digital ya configurada.",
             (context, token) => RunWindowsLicenseAsync(context, token, "/ato"),
             changesSystem: true,
-            confirmation: "Se intentará activar Windows con la licencia configurada. No se instalarán claves nuevas."),
+            confirmation: "Se intentará activar Windows con la licencia configurada. No se instalarán claves nuevas.", allowedInElevatedSession: true),
         new ModuleAction("Comprobar activación de Office", "Localiza ospp.vbs y consulta el estado de las licencias de Office.",
             (context, token) => CheckOfficeStatusAsync(host, context, token)),
         new ModuleAction("Activar Office", "Solicita activación mediante ospp.vbs con la licencia existente.",

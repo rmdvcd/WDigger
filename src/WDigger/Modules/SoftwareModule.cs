@@ -1,4 +1,5 @@
 using System.Linq;
+using System.Text.Json;
 using WDigger.Core;
 using WDigger.Models;
 using WDigger.UI;
@@ -30,11 +31,35 @@ public sealed class SoftwareModule : IModule
             (context, token) => context.RunCommandAsync("winget", "list --accept-source-agreements", token)),
         new ModuleAction(
             "Quitar un paquete Appx",
-            "Quita aplicaciones que coincidan con un patrón; puede afectar a funciones de Windows.",
-            (context, token) => Task.CompletedTask,
-            changesSystem: true,
-            unavailableReason: "Suspendida hasta poder seleccionar y confirmar los paquetes exactos.")
+            "Selecciona un único paquete del usuario actual; no elimina paquetes provisionados ni para otros usuarios.",
+            (context, token) => RemoveAppxAsync(context, token), changesSystem: true,
+            confirmation: "Desinstalar una aplicación puede afectar a datos y funciones; no existe rollback automático.",
+            canCancel: false, allowedInElevatedSession: true)
     };
+
+    public sealed class AppxEntry
+    {
+        public string Name { get; set; } = "";
+        public string PackageFullName { get; set; } = "";
+    }
+
+    private static async Task RemoveAppxAsync(ModuleExecutionContext context, CancellationToken token)
+    {
+        const string inventory = "ConvertTo-Json -InputObject @(Get-AppxPackage | Where-Object { -not $_.IsFramework -and -not $_.IsResourcePackage -and -not $_.NonRemovable } | Select-Object Name, PackageFullName) -Compress";
+        var result = await context.RunReadOnlyPowerShellAsync(inventory, token);
+        var entries = JsonSerializer.Deserialize<List<AppxEntry>>(result.StandardOutput.Trim(),
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new();
+        entries = entries.Where(p => AppxPackagePolicy.IsValidFullName(p.PackageFullName)).ToList();
+        if (entries.Count == 0) { context.WriteLine("No hay paquetes aptos para el usuario actual.", OutputKind.Warning); return; }
+        var selected = await context.ChooseAsync("Quitar Appx", "Elige un paquete exacto del usuario de la sesión elevada:", entries,
+            p => $"{p.Name} — {p.PackageFullName}");
+        if (selected is null) return;
+        if (!await context.ConfirmAsync("Confirmar desinstalación", $"Se desinstalará solo «{selected.PackageFullName}» para el usuario de esta sesión. Puede perderse información de la aplicación; no se desinstala para todos los usuarios ni se garantiza la reinstalación. ¿Continuar?")) return;
+        // The package name is matched against a strict alphabet and checked again in PowerShell.
+        var package = selected.PackageFullName;
+        var script = $"$p = @(Get-AppxPackage | Where-Object {{ $_.PackageFullName -ceq '{package}' -and -not $_.IsFramework -and -not $_.IsResourcePackage -and -not $_.NonRemovable }}); if ($p.Count -ne 1) {{ throw 'El paquete ya no está disponible o no es apto.' }}; Remove-AppxPackage -Package $p[0].PackageFullName -ErrorAction Stop";
+        await context.RunPowerShellAsync(script, token);
+    }
 
     private static async Task InstallAllAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
     {

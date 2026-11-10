@@ -6,6 +6,8 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../../src/WDigger/Core/AppxPackagePolicy.cs" Link="Core/AppxPackagePolicy.cs" />
+    <Compile Include="../../src/WDigger/Core/RegistryTweakService.cs" Link="Core/RegistryTweakService.cs" />
     <Compile Include="../../src/WDigger/Core/OperationPolicy.cs" Link="Core/OperationPolicy.cs" />
     <Compile Include="../../src/WDigger/Diagnostics/DiagnosticService.cs" Link="Diagnostics/DiagnosticService.cs" />
     <Compile Include="../../src/WDigger/Diagnostics/DiagnosticReport.cs" Link="Diagnostics/DiagnosticReport.cs" />
