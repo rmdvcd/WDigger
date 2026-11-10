@@ -71,7 +71,7 @@ public sealed class EventLogBiosModule : IModule
         catch (Exception exception)
         {
             // WMI failures are logged and degraded gracefully.
-            return new List<string[]> { ["Error", exception.Message] };
+            return new List<string[]> { new[] { "Error", exception.Message } };
         }
         return rows;
     }
