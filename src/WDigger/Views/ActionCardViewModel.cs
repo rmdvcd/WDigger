@@ -29,7 +29,7 @@ public sealed class ActionCardViewModel : INotifyPropertyChanged
         Title = action.Title;
         Description = action.UnavailableReason is not null ? $"{action.Description}\nNo disponible: {action.UnavailableReason}"
             : action.ChangesSystem && !action.AllowedInElevatedSession ? $"{action.Description}\nSolo simulación: ejecución real pendiente de revisión."
-            : action.ChangesSystem ? $"{action.Description}\nEjecución real: requiere abrir WDigger como administrador."
+            : action.ChangesSystem ? $"{action.Description}\nEjecución real: WDigger ya se inició como administrador y solicitará confirmación."
             : action.Description;
         ChangesSystem = action.ChangesSystem;
         BadgeText = action.ChangesSystem ? "Modifica el sistema" : action.WritesFile ? "Guarda un archivo" : "Solo lectura";

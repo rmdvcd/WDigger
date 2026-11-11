@@ -1,12 +1,12 @@
-using System.Security.Principal;
 using WDigger.Services;
 using WDigger.Diagnostics;
 
 namespace WDigger.Core;
 
 /// <summary>
-/// Shared services for the lifetime of the native application. All mutable data
-/// lives beside the executable so a published copy can run directly from USB.
+/// Shared services for the lifetime of the native application. Portable data is
+/// preferred beside the executable; logging falls back to LocalAppData when the
+/// launch directory is protected or read-only.
 /// </summary>
 public sealed class AppHost : IDisposable
 {
@@ -27,18 +27,8 @@ public sealed class AppHost : IDisposable
     /// <summary>When true, modifying commands are logged but never executed.</summary>
     public bool DryRun { get; set; }
 
-    public bool IsAdministrator
-    {
-        get
-        {
-            try
-            {
-                using var identity = WindowsIdentity.GetCurrent();
-                return new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator);
-            }
-            catch { return false; }
-        }
-    }
+    /// <summary>True only when the process token itself is elevated.</summary>
+    public bool IsAdministrator => ElevationPolicy.IsProcessElevated();
 
     private AppHost(string baseDirectory)
     {

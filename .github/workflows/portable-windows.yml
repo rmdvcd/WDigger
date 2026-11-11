@@ -78,10 +78,10 @@ jobs:
           $bytes = [IO.File]::ReadAllBytes($files[0].FullName)
           $utf8 = [Text.Encoding]::UTF8.GetString($bytes)
           $unicode = [Text.Encoding]::Unicode.GetString($bytes)
-          if (-not ($utf8.Contains("asInvoker") -or $unicode.Contains("asInvoker"))) {
-            throw "The portable EXE does not contain the asInvoker manifest"
+          if (-not ($utf8.Contains("requireAdministrator") -or $unicode.Contains("requireAdministrator"))) {
+            throw "The portable EXE does not contain the requireAdministrator manifest"
           }
-          Write-Host "Portable EXE and asInvoker manifest verified: $($files[0].Length) bytes"
+          Write-Host "Portable EXE and requireAdministrator manifest verified: $($files[0].Length) bytes"
 
       - name: Upload WDigger portable
         uses: actions/upload-artifact@v7

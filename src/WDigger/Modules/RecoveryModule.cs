@@ -12,7 +12,8 @@ public sealed class RecoveryModule : IModule
     public IReadOnlyList<ModuleAction> CreateActions(AppHost host) => new[]
     {
         new ModuleAction("Comprobar Windows File Recovery", "Muestra la ayuda de winfr para confirmar que está disponible.",
-            (context, token) => Run(host, context, token, "winfr", "/?")),
+            (context, token) => Run(host, context, token, "winfr", "/?"),
+            unavailableReason: "La invocación de WinFR está suspendida hasta verificar de forma independiente su ruta y firma en una sesión elevada."),
         new ModuleAction("Listar unidades", "Muestra las unidades lógicas y su espacio disponible.",
             (context, token) => Run(host, context, token, "powershell",
                 "-NoProfile -Command \"Get-CimInstance Win32_LogicalDisk | Select-Object DeviceID, DriveType, Size, FreeSpace | Format-Table -AutoSize\"")),

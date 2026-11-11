@@ -1,8 +1,9 @@
 namespace WDigger.Core;
 
 /// <summary>
-/// Best-effort crash logging next to the executable. Never throws: crash
-/// handling must not be able to crash.
+/// Best-effort crash logging. Prefer the portable directory, but fall back to
+/// LocalAppData when WDigger is started from a protected or read-only folder.
+/// Crash handling must never be able to crash.
 /// </summary>
 public static class CrashLog
 {
@@ -10,15 +11,38 @@ public static class CrashLog
 
     public static void Write(Exception exception)
     {
+        var content = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {exception}{Environment.NewLine}{Environment.NewLine}";
+        if (TryAppend(FilePath, content))
+        {
+            return;
+        }
+
         try
         {
-            File.AppendAllText(
-                FilePath,
-                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {exception}{Environment.NewLine}{Environment.NewLine}");
+            var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            if (!string.IsNullOrWhiteSpace(local))
+            {
+                var directory = Path.Combine(local, "WDigger", "logs");
+                Directory.CreateDirectory(directory);
+                _ = TryAppend(Path.Combine(directory, "WDigger.crash.log"), content);
+            }
         }
         catch
         {
-            // Crash logging is best effort (for example, on read-only media).
+            // Best effort only.
+        }
+    }
+
+    private static bool TryAppend(string path, string content)
+    {
+        try
+        {
+            File.AppendAllText(path, content);
+            return true;
+        }
+        catch
+        {
+            return false;
         }
     }
 }

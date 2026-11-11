@@ -4,6 +4,7 @@ using WDigger.Core;
 using WDigger.Models;
 using WDigger.Diagnostics;
 using Microsoft.Win32;
+using System.Xml.Linq;
 
 if (args.Length > 0 && args[0] == "--child")
 {
@@ -33,6 +34,13 @@ var testDirectory = Path.Combine(Path.GetTempPath(), "WDigger-tests-" + Guid.New
 Directory.CreateDirectory(testDirectory);
 try
 {
+    var manifestPath = FindRepositoryFile("src", "WDigger", "app.manifest");
+    var manifest = XDocument.Load(manifestPath);
+    var executionLevel = manifest.Descendants().FirstOrDefault(element =>
+        element.Name.LocalName == "requestedExecutionLevel")?.Attribute("level")?.Value;
+    Require(string.Equals(executionLevel, "requireAdministrator", StringComparison.Ordinal),
+        "application manifest must require an elevated administrator token");
+
     using var logger = new AppLogger(testDirectory);
     var executable = Environment.ProcessPath ?? throw new Exception("No se pudo determinar el proceso de pruebas.");
     var prefix = string.Equals(Path.GetFileNameWithoutExtension(executable), "dotnet", StringComparison.OrdinalIgnoreCase)
@@ -44,6 +52,15 @@ try
     var actual = await executor.RunAsync(executable, Child("exit"), simulate: false);
     Require(!actual.Success && actual.ExitCode == 7, "nonzero exit was not preserved");
     Require(actual.StandardOutput.Contains("output-marker") && actual.StandardError.Contains("error-marker"), "stdout/stderr not captured separately");
+
+    var untrustedProgram = await executor.RunAsync("wdigger-tool-not-authorized", simulate: false);
+    Require(!untrustedProgram.Success && untrustedProgram.ExitCode == -1,
+        "unknown executable name was not rejected");
+    if (OperatingSystem.IsWindows())
+    {
+        Require(untrustedProgram.StandardError.Contains("no está autorizado", StringComparison.OrdinalIgnoreCase),
+            "elevated executable allowlist was bypassed");
+    }
 
     var argumentValues = new[] { "with spaces", "quote\" --option", @"C:\path with spaces\" };
     var childArgs = new List<string>();
@@ -170,6 +187,23 @@ try
 finally
 {
     try { Directory.Delete(testDirectory, recursive: true); } catch { }
+}
+
+static string FindRepositoryFile(params string[] parts)
+{
+    foreach (var start in new[] { Directory.GetCurrentDirectory(), AppContext.BaseDirectory })
+    {
+        for (var directory = new DirectoryInfo(start); directory is not null; directory = directory.Parent)
+        {
+            var candidate = Path.Combine(new[] { directory.FullName }.Concat(parts).ToArray());
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+    }
+
+    throw new FileNotFoundException($"No se encontró el archivo de repositorio: {Path.Combine(parts)}");
 }
 
 static void Require(bool condition, string message)

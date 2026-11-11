@@ -19,7 +19,7 @@
     <AssemblyTitle>WDigger</AssemblyTitle>
     <Product>WDigger</Product>
     <Description>WinUI 3 native Windows diagnostics and repair toolkit</Description>
-    <Version>3.0.0</Version>
+    <Version>3.0.1</Version>
 
     <!-- Portable defaults: one self-contained x64 executable, no installer. -->
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
