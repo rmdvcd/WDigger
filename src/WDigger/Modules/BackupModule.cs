@@ -17,7 +17,8 @@ public sealed class BackupModule : IModule
             (context, token) => ShowDetailsAsync(host, context, token)),
         new ModuleAction("Restaurar una copia .tibx", "Usa deploycmd de Acronis para restaurar en una unidad de destino.",
             (context, token) => Task.CompletedTask, changesSystem: true,
-            unavailableReason: "Suspendida hasta validar Acronis y confirmar el disco de destino de forma segura.")
+            unavailableReason: "Suspendida hasta validar Acronis y confirmar el disco de destino de forma segura.",
+            risk: OperationRisk.Destructive)
     };
 
     private static async Task ListTibxAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
@@ -37,6 +38,7 @@ public sealed class BackupModule : IModule
         if (files.Count == 0)
         {
             context.WriteLine("No se encontraron archivos .tibx.", OutputKind.Warning);
+            context.SetOutcome(OperationOutcome.NotStarted("No se encontraron copias .tibx en la carpeta seleccionada."));
             return;
         }
         context.ShowTable("Copias de seguridad .tibx", new[] { "Archivo", "Ubicación", "Tamaño", "Modificado" },

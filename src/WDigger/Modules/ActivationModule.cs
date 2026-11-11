@@ -14,46 +14,45 @@ public sealed class ActivationModule : IModule
         new ModuleAction("Comprobar activación de Windows", "Consulta el estado de la licencia mediante slmgr /xpr.",
             (context, token) => RunWindowsLicenseAsync(context, token, "/xpr")),
         new ModuleAction("Activar Windows", "Solicita activación con la clave o licencia digital ya configurada.",
-            (context, token) => RunWindowsLicenseAsync(context, token, "/ato"),
-            changesSystem: true,
-            confirmation: "Se intentará activar Windows con la licencia configurada. No se instalarán claves nuevas.", allowedInElevatedSession: true),
+            (context, token) => RunWindowsLicenseAsync(context, token, "/ato"), changesSystem: true,
+            confirmation: "Se intentará activar Windows con la licencia configurada. No se instalarán claves nuevas.",
+            allowedInElevatedSession: true, risk: OperationRisk.Moderate, commandTimeout: TimeSpan.FromMinutes(15)),
         new ModuleAction("Comprobar activación de Office", "Localiza ospp.vbs y consulta el estado de las licencias de Office.",
-            (context, token) => CheckOfficeStatusAsync(host, context, token)),
+            CheckOfficeStatusAsync),
         new ModuleAction("Activar Office", "Solicita activación mediante ospp.vbs con la licencia existente.",
-            (context, token) => ActivateOfficeAsync(host, context, token), changesSystem: true,
-            confirmation: "Se intentará activar Office con su licencia configurada."),
+            ActivateOfficeAsync, changesSystem: true,
+            confirmation: "Se intentará activar Office con su licencia configurada.", risk: OperationRisk.Moderate),
         new ModuleAction("Detectar HEU-KMS existente", "Solo informa de instalaciones presentes en ubicaciones habituales; no descarga ni ejecuta software.",
-            (context, token) => DetectHeuKms(host, context, token))
+            DetectHeuKms)
     };
 
-    private static async Task CheckOfficeStatusAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
+    private static async Task CheckOfficeStatusAsync(ModuleExecutionContext context, CancellationToken token)
     {
-        _ = host;
         var script = FindOfficeScript();
         if (script is null)
         {
             context.WriteLine("No se encontró ospp.vbs en las ubicaciones habituales de Office.", OutputKind.Warning);
+            context.SetOutcome(OperationOutcome.NotStarted("No se encontró ospp.vbs en las ubicaciones habituales de Office."));
             return;
         }
-        await context.RunArgumentsAsync("cscript", new[] { "//Nologo", script, "/dstatus" }, token);
+        await context.RunCommandAsync(CommandSpec.Read(WindowsTool.Cscript, "//Nologo", script, "/dstatus"), token);
     }
 
-    private static async Task ActivateOfficeAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)
+    private static async Task ActivateOfficeAsync(ModuleExecutionContext context, CancellationToken token)
     {
-        _ = host;
         var script = FindOfficeScript();
         if (script is null)
         {
             context.WriteLine("No se encontró ospp.vbs en las ubicaciones habituales de Office.", OutputKind.Warning);
+            context.SetOutcome(OperationOutcome.NotStarted("No se encontró ospp.vbs en las ubicaciones habituales de Office."));
             return;
         }
-        await context.RunArgumentsAsync("cscript", new[] { "//Nologo", script, "/act" }, token);
+        await context.RunCommandAsync(CommandSpec.Modify(WindowsTool.Cscript, "//Nologo", script, "/act"), token);
     }
 
-    private static Task DetectHeuKms(AppHost host, ModuleExecutionContext context, CancellationToken token)
+    private static Task DetectHeuKms(ModuleExecutionContext context, CancellationToken token)
     {
-        _ = host;
-        _ = token;
+        token.ThrowIfCancellationRequested();
         var found = new[]
         {
             @"C:\Program Files\HEU_KMS_Activator",
@@ -72,8 +71,7 @@ public sealed class ActivationModule : IModule
             var executable = Directory.EnumerateFiles(found, "*.exe", SearchOption.TopDirectoryOnly).FirstOrDefault();
             if (executable is not null) context.WriteLine($"Ejecutable: {Path.GetFileName(executable)}");
         }
-        context.WriteLine("Las herramientas de terceros deben utilizarse conforme a las licencias y la legislación aplicable.",
-            OutputKind.Muted);
+        context.WriteLine("Las herramientas de terceros deben utilizarse conforme a las licencias y la legislación aplicable.", OutputKind.Muted);
         return Task.CompletedTask;
     }
 
@@ -86,5 +84,8 @@ public sealed class ActivationModule : IModule
     }.FirstOrDefault(File.Exists);
 
     private static Task<CommandResult> RunWindowsLicenseAsync(ModuleExecutionContext context, CancellationToken token, string operation)
-        => context.RunArgumentsAsync("cscript", new[] { "//Nologo", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "slmgr.vbs"), operation }, token);
+        => context.RunCommandAsync(new CommandSpec(WindowsTool.Cscript, new[]
+        {
+            "//Nologo", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "slmgr.vbs"), operation
+        }, operation == "/ato" ? CommandEffect.ModifiesSystem : CommandEffect.ReadOnly), token);
 }

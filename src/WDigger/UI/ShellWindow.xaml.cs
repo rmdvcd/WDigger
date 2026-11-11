@@ -1,4 +1,3 @@
-using Microsoft.UI;
 using Microsoft.UI.Composition.SystemBackdrops;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
@@ -94,6 +93,22 @@ public sealed partial class ShellWindow : Window
         }
 
         ShowWelcome();
+        ShowInterruptedOperations();
+    }
+
+    private void ShowInterruptedOperations()
+    {
+        var incomplete = _host.Operations.GetIncompleteRecords();
+        if (incomplete.Count == 0) return;
+
+        AppendOutput($"Se detectaron {incomplete.Count} operación(es) interrumpida(s) de una sesión anterior. No se reanudarán automáticamente.", OutputKind.Warning);
+        foreach (var record in incomplete.Take(5))
+        {
+            var step = record.Steps.LastOrDefault();
+            var detail = step is null ? "sin pasos registrados" : $"último paso: {step.Name}";
+            AppendOutput($"Interrumpida: {record.ActionTitle} · inició {record.StartedAtUtc.ToLocalTime():g} · {detail}. Revisa el journal: {_host.Operations.DirectoryPath}", OutputKind.Warning);
+        }
+        if (incomplete.Count > 5) AppendOutput("Hay más registros interrumpidos en el directorio del journal.", OutputKind.Warning);
     }
 
     // Breadcrumbs are best effort: a logging failure must not break the UI.
@@ -538,45 +553,64 @@ public sealed partial class ShellWindow : Window
             AppendOutput($"Acción no disponible: {action.UnavailableReason}", OutputKind.Warning);
             return;
         }
+
         var decision = OperationPolicy.Evaluate(action.ChangesSystem, _host.DryRun,
-            action.AllowedInElevatedSession, _host.IsAdministrator, _host.Logger.IsPersistent);
+            action.AllowedInElevatedSession, _host.IsAdministrator, _host.Logger.IsPersistent,
+            _host.Operations.IsPersistent);
         if (decision != OperationDecision.Allowed)
         {
             var (title, reason) = decision switch
             {
                 OperationDecision.BlockedPendingReview => ("Acción no disponible", "Esta operación sigue suspendida hasta completar su revisión de seguridad y recuperación. Puedes usar la simulación."),
                 OperationDecision.AdministratorRequired => ("Elevación no disponible", "WDigger debe iniciarse elevado. La sesión actual no tiene un token de administrador, por lo que la acción se bloqueó. Cierra la aplicación y vuelve a aceptar el aviso de Control de cuentas de usuario."),
+                OperationDecision.OperationJournalRequired => ("Journal no disponible", "La operación real está bloqueada porque no se puede guardar su estado recuperable. Libera espacio o usa una carpeta de datos escribible."),
                 _ => ("Registro no disponible", "La operación real está bloqueada porque no se puede guardar el registro. Libera espacio o usa una carpeta de datos escribible.")
             };
             await Dialogs.ShowMessageAsync(title, reason);
             return;
         }
+
         lock (_operationLock)
         {
             if (_isBusy || _closing)
             {
                 return;
             }
-
             _isBusy = true;
         }
 
         DryRunSwitch.IsEnabled = false;
         var simulate = action.ChangesSystem && _host.DryRun;
         _currentChangesSystem = action.ChangesSystem && !simulate;
-        _currentCanCancel = action.CanCancel;
+        _currentCanCancel = action.CancellationPolicy == OperationCancellationPolicy.AllowedWithConfirmation;
+        OperationSession? session = null;
         try
         {
+            if (action.ChangesSystem)
+            {
+                session = _host.Operations.Begin(action.Title, action.Risk, simulate, _host.IsAdministrator);
+                if (!simulate && !session.IsPersistent)
+                {
+                    session.Complete(OperationOutcome.Blocked("No se pudo iniciar un journal persistente; no se aplicaron cambios."));
+                    SetStatus("Acción bloqueada");
+                    await Dialogs.ShowMessageAsync("Journal no disponible", "La operación real se bloqueó porque no se pudo guardar su estado recuperable antes de aplicar cambios.");
+                    return;
+                }
+            }
+
             if (action.ChangesSystem && !simulate)
             {
                 var message = action.Confirmation
                     ?? "Esta acción puede modificar Windows. Revisa la descripción antes de continuar.";
                 var confirmed = await Dialogs.ConfirmAsync(
                     "Confirmar cambios en el sistema",
-                    $"{message}\n\nEsta operación puede ser irreversible; un punto de restauración no sustituye una copia de seguridad ni garantiza el rollback. No apagues el equipo durante su ejecución.\n\n¿Quieres ejecutar «{action.Title}» en el sistema real?",
+                    $"Riesgo: {RiskText(action.Risk)}. Recuperación: {RecoveryText(action.Recovery)}. Cancelación: {CancellationText(action.CancellationPolicy)}.\n\n{message}\n\nEsta operación puede ser irreversible; un punto de restauración no sustituye una copia de seguridad ni garantiza el rollback. No apagues el equipo durante su ejecución.\n\n¿Quieres ejecutar «{action.Title}» en el sistema real?",
                     "Ejecutar", requireAcknowledgement: true);
                 if (!confirmed)
                 {
+                    var outcome = OperationOutcome.NotStarted("El usuario rechazó la confirmación final.");
+                    session?.Complete(outcome);
+                    SetStatus("Acción no ejecutada");
                     TraceUi($"Action confirmation declined: {action.Title}");
                     return;
                 }
@@ -591,7 +625,8 @@ public sealed partial class ShellWindow : Window
             }
             previousCts?.Dispose();
 
-            var context = new ModuleExecutionContext(this, _host, simulate, action.ChangesSystem);
+            var context = new ModuleExecutionContext(this, _host, simulate, action.ChangesSystem,
+                action.CommandTimeout, session);
 
             SetBusy(true, $"Ejecutando: {action.Title}...");
             AppendOutput(string.Empty, OutputKind.Muted);
@@ -606,42 +641,61 @@ public sealed partial class ShellWindow : Window
                 if (action.ChangesSystem && !simulate)
                 {
                     CancelOperationButton.IsEnabled = false;
+                    session?.StartStep("restore-point", "Creando y verificando punto de restauración.");
                     SetStatus("Creando y verificando punto de restauración...");
-                    var created = await Task.Run(() => _host.RestorePoints.Create(action.Title), operation.Token);
+                    var restorePoint = await Task.Run(() => _host.RestorePoints.Create(action.Title), operation.Token);
+                    session?.SetRestorePoint(restorePoint.Created, restorePoint.Reference);
+                    session?.CompleteLatestStep(restorePoint.Created ? OperationStatus.Succeeded : OperationStatus.Failed,
+                        restorePoint.Summary);
                     operation.Token.ThrowIfCancellationRequested();
-                    if (!created)
+                    if (!restorePoint.Created)
                     {
-                        _host.Logger.Warn($"No verified restore point for action: {action.Title}");
+                        _host.Logger.Warn($"No verified restore point for action: {action.Title}; {restorePoint.Summary}");
                         var proceed = await Dialogs.ConfirmAsync("Punto de restauración no disponible",
-                            "Windows no ha creado un punto de restauración verificable. Continuar no permite recuperar automáticamente los cambios. Los puntos de restauración tampoco sustituyen una copia de seguridad de tus archivos. ¿Continuar sin punto de restauración?",
+                            $"{restorePoint.Summary}\n\nContinuar no permite recuperar automáticamente los cambios. Los puntos de restauración tampoco sustituyen una copia de seguridad de tus archivos. ¿Continuar sin punto de restauración?",
                             "Continuar sin punto");
                         _host.Logger.Warn($"Continue without restore point: {proceed}; action={action.Title}");
-                        if (!proceed) { SetStatus("Acción no ejecutada"); return; }
+                        if (!proceed)
+                        {
+                            var outcome = OperationOutcome.NotStarted("El usuario decidió no continuar sin punto de restauración.");
+                            session?.Complete(outcome);
+                            SetStatus("Acción no ejecutada");
+                            return;
+                        }
                     }
-                    else AppendOutput("Punto de restauración verificado; no sustituye una copia de seguridad.", OutputKind.Info);
+                    else AppendOutput($"{restorePoint.Summary} No sustituye una copia de seguridad.", OutputKind.Info);
                     CancelOperationButton.IsEnabled = _currentCanCancel;
                     operation.Token.ThrowIfCancellationRequested();
                 }
+
                 TraceUi($"Action executing: {action.Title}");
-                if (action.ChangesSystem && !simulate && !_host.Logger.IsPersistent)
-                    throw new InvalidOperationException("El registro persistente dejó de estar disponible; no se iniciaron los cambios.");
+                if (action.ChangesSystem && !simulate && (!_host.Logger.IsPersistent || !_host.Operations.IsPersistent))
+                    throw new InvalidOperationException("El registro o journal persistente dejó de estar disponible; no se iniciaron los cambios.");
                 await action.Execute(context, operation.Token);
                 TraceUi($"Action returned: {action.Title}; cancelled={operation.IsCancellationRequested}");
                 if (!operation.IsCancellationRequested)
                 {
-                    SetStatus(simulate ? "Simulación finalizada" : "Acción terminada; revisa el resultado");
-                    AppendOutput(simulate ? "Simulación finalizada: no se ejecutaron los cambios." : "Acción terminada; revisa los resultados anteriores.", simulate ? OutputKind.Warning : OutputKind.Info);
+                    var outcome = context.ResolveOutcome();
+                    session?.Complete(outcome);
+                    PresentOutcome(outcome);
                 }
             }
             catch (OperationCanceledException)
             {
-                SetStatus("Operación cancelada");
-                AppendOutput("Operación cancelada. Si se realizaron cambios, pueden haber quedado incompletos; revisa el sistema.", OutputKind.Warning);
+                var outcome = OperationOutcome.Cancelled("La operación se canceló. Si se realizaron cambios, pueden haber quedado incompletos; revisa el sistema.");
+                session?.Complete(outcome);
+                PresentOutcome(outcome);
             }
             catch (Exception exception)
             {
                 _host.Logger.Error($"Action '{action.Title}' failed: {exception}");
-                SetStatus("La acción produjo un error");
+                var declared = context.ResolveOutcome();
+                var outcome = declared.Status is OperationStatus.ManualActionRequired or OperationStatus.Partial
+                    ? declared
+                    : OperationOutcome.Failed($"La acción produjo un error: {exception.Message}",
+                        action.ChangesSystem ? "Revisa el journal de operaciones y el resultado de los pasos ya iniciados antes de reintentar." : null);
+                session?.Complete(outcome);
+                PresentOutcome(outcome);
                 AppendOutput(exception.ToString(), OutputKind.Error);
                 try
                 {
@@ -668,6 +722,12 @@ public sealed partial class ShellWindow : Window
         }
         finally
         {
+            if (session is { IsCompleted: false })
+            {
+                session.Complete(OperationOutcome.Failed(
+                    "La operación terminó antes de registrar un resultado final.",
+                    "Revisa el journal antes de reintentar; puede haber pasos incompletos."));
+            }
             DryRunSwitch.IsEnabled = true;
             lock (_operationLock)
             {
@@ -675,6 +735,58 @@ public sealed partial class ShellWindow : Window
             }
         }
     }
+
+    private void PresentOutcome(OperationOutcome outcome)
+    {
+        var kind = outcome.Status switch
+        {
+            OperationStatus.Succeeded or OperationStatus.SucceededWithRestartRequired => OutputKind.Success,
+            OperationStatus.Simulated or OperationStatus.NotStarted or OperationStatus.Cancelled or OperationStatus.ManualActionRequired => OutputKind.Warning,
+            _ => OutputKind.Error
+        };
+        var status = outcome.Status switch
+        {
+            OperationStatus.Succeeded => "Acción completada",
+            OperationStatus.SucceededWithRestartRequired => "Acción completada; reinicio requerido",
+            OperationStatus.Simulated => "Simulación finalizada",
+            OperationStatus.NotStarted => "Acción no iniciada",
+            OperationStatus.Cancelled => "Operación cancelada",
+            OperationStatus.Blocked => "Acción bloqueada",
+            OperationStatus.ManualActionRequired => "Acción requiere intervención manual",
+            OperationStatus.Partial => "Acción completada parcialmente",
+            _ => "La acción produjo un error"
+        };
+        SetStatus(status);
+        AppendOutput(outcome.Summary, kind);
+        if (!string.IsNullOrWhiteSpace(outcome.ManualAction))
+        {
+            AppendOutput($"Acción manual requerida: {outcome.ManualAction}", OutputKind.Warning);
+        }
+    }
+
+    private static string RiskText(OperationRisk risk) => risk switch
+    {
+        OperationRisk.Destructive => "destructivo",
+        OperationRisk.High => "alto",
+        OperationRisk.Moderate => "moderado",
+        OperationRisk.Low => "bajo",
+        _ => "solo lectura"
+    };
+
+    private static string RecoveryText(OperationRecovery recovery) => recovery switch
+    {
+        OperationRecovery.SnapshotAndVerifiedRevert => "copia previa y reversión verificada cuando sea posible",
+        OperationRecovery.CompensatesInProcess => "compensación solo durante la misma ejecución",
+        OperationRecovery.RestorePointOnly => "punto de restauración sin rollback garantizado",
+        OperationRecovery.ManualReviewRequired => "revisión manual si algo falla",
+        _ => "sin recuperación automática"
+    };
+
+    private static string CancellationText(OperationCancellationPolicy policy) => policy switch
+    {
+        OperationCancellationPolicy.AllowedWithConfirmation => "se puede solicitar con confirmación; puede dejar cambios parciales",
+        _ => "no está disponible mientras se ejecuta"
+    };
 
     private void SetBusy(bool busy, string? status)
     {
@@ -693,6 +805,10 @@ public sealed partial class ShellWindow : Window
         AppendOutput("Sesión iniciada con permisos de administrador.", OutputKind.Info);
         AppendOutput($"Ubicación de datos: {_host.BaseDirectory}", OutputKind.Muted);
         AppendOutput($"Registro de auditoría: {_host.Logger.LogFilePath}", OutputKind.Muted);
+        AppendOutput(_host.Operations.IsPersistent
+            ? $"Journal de operaciones: {_host.Operations.DirectoryPath}"
+            : "Journal de operaciones no disponible; las operaciones reales permanecen bloqueadas.",
+            _host.Operations.IsPersistent ? OutputKind.Muted : OutputKind.Warning);
         if (!_host.Logger.IsPersistent) AppendOutput("No hay almacenamiento para el registro persistente. Las operaciones de modificación permanecen bloqueadas.", OutputKind.Warning);
         AppendOutput("Selecciona una herramienta en el panel lateral y pulsa Ejecutar en cualquier tarjeta.", OutputKind.Info);
         AppendOutput("Algunas operaciones no se pueden cancelar de forma segura. No cierres la aplicación mientras estén activas.", OutputKind.Info);
@@ -702,7 +818,9 @@ public sealed partial class ShellWindow : Window
     {
         try
         {
-            var textBrush = new SolidColorBrush(ColorHelper.FromArgb(0xFF, 0x88, 0x88, 0x88));
+            Brush? textBrush;
+            try { textBrush = Application.Current.Resources["TextFillColorSecondaryBrush"] as Brush; }
+            catch { textBrush = null; }
             var panel = new StackPanel { Spacing = 10, MaxWidth = 460 };
             panel.Children.Add(new FontIcon { Glyph = "\uE946", FontSize = 28, HorizontalAlignment = HorizontalAlignment.Left });
             panel.Children.Add(new TextBlock

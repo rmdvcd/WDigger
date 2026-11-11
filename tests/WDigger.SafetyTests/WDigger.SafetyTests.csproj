@@ -9,12 +9,18 @@
     <Compile Include="../../src/WDigger/Core/AppxPackagePolicy.cs" Link="Core/AppxPackagePolicy.cs" />
     <Compile Include="../../src/WDigger/Core/RegistryTweakService.cs" Link="Core/RegistryTweakService.cs" />
     <Compile Include="../../src/WDigger/Core/OperationPolicy.cs" Link="Core/OperationPolicy.cs" />
+    <Compile Include="../../src/WDigger/Core/OperationModels.cs" Link="Core/OperationModels.cs" />
+    <Compile Include="../../src/WDigger/Core/OperationJournal.cs" Link="Core/OperationJournal.cs" />
+    <Compile Include="../../src/WDigger/Core/SupportReportExporter.cs" Link="Core/SupportReportExporter.cs" />
+    <Compile Include="../../src/WDigger/Core/TemporaryFileCleaner.cs" Link="Core/TemporaryFileCleaner.cs" />
     <Compile Include="../../src/WDigger/Diagnostics/DiagnosticService.cs" Link="Diagnostics/DiagnosticService.cs" />
     <Compile Include="../../src/WDigger/Diagnostics/DiagnosticReport.cs" Link="Diagnostics/DiagnosticReport.cs" />
     <Compile Include="../../src/WDigger/Core/AppLogger.cs" Link="Core/AppLogger.cs" />
     <Compile Include="../../src/WDigger/Core/CommandExecutor.cs" Link="Core/CommandExecutor.cs" />
+    <Compile Include="../../src/WDigger/Core/CommandSpec.cs" Link="Core/CommandSpec.cs" />
+    <Compile Include="../../src/WDigger/Core/PowerShellScriptCatalog.cs" Link="Core/PowerShellScriptCatalog.cs" />
     <Compile Include="../../src/WDigger/Core/CommandResult.cs" Link="Core/CommandResult.cs" />
-    <Compile Include="../../src/WDigger/Core/SoftwarePackagePolicy.cs" Link="Core/SoftwarePackagePolicy.cs" />
-    <Compile Include="../../src/WDigger/Models/SoftwareDefinition.cs" Link="Models/SoftwareDefinition.cs" />
+    <EmbeddedResource Include="../../src/WDigger/PowerShell/Scripts/*.ps1"
+                      LogicalName="WDigger.PowerShell.Scripts.%(Filename).ps1" />
   </ItemGroup>
 </Project>

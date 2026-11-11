@@ -7,6 +7,8 @@
 **Criterios:** skills adjuntas `winrepair-core`, `winrepair-ux`, `winrepair-ui` y `winrepair-ix`.
 
 > **Actualización de implementación — 11 de noviembre de 2026:** por el requisito operativo actual, la rama de trabajo usa `requireAdministrator` y valida el token elevado al arrancar. Esto sustituye las referencias de este informe a un manifiesto `asInvoker` como descripción del estado presente; no invalida la recomendación de P1 de volver a mínimo privilegio mediante un auxiliar restringido. Las integraciones de Winget y WinFR se mantienen suspendidas en sesiones elevadas hasta verificar de forma independiente la ruta y la firma de sus binarios.
+>
+> Este archivo conserva la auditoría previa. El plan revalidado sobre el commit actual está en [PLAN_DE_CAMBIOS_2026-11-11.md](PLAN_DE_CAMBIOS_2026-11-11.md).
 
 ## 1. Resumen ejecutivo
 

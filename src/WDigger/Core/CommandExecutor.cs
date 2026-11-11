@@ -4,7 +4,7 @@ using WDigger.Models;
 
 namespace WDigger.Core;
 
-/// <summary>Runs a command, drains both pipes concurrently and records its outcome.</summary>
+/// <summary>Runs reviewed Windows commands, drains both pipes concurrently and records their outcome.</summary>
 public sealed class CommandExecutor
 {
     private readonly AppLogger _logger;
@@ -21,37 +21,56 @@ public sealed class CommandExecutor
 
     public bool DryRun => _isDryRun();
 
-    public CommandResult Run(string fileName, string arguments = "", bool echoOutput = true,
-        Action<string>? onOutputLine = null, CancellationToken cancellationToken = default,
-        bool? simulate = null, bool enforceTimeout = true)
-        => RunAsync(fileName, arguments, echoOutput, onOutputLine, cancellationToken, simulate, enforceTimeout)
-            .GetAwaiter().GetResult();
-
-    public Task<CommandResult> RunAsync(string fileName, string arguments = "", bool echoOutput = true,
-        Action<string>? onOutputLine = null, CancellationToken cancellationToken = default,
-        bool? simulate = null, bool enforceTimeout = true)
-        => RunCoreAsync(fileName, arguments, null, echoOutput, onOutputLine, cancellationToken, simulate, enforceTimeout);
-
-    public Task<CommandResult> RunArgumentsAsync(string fileName, IReadOnlyList<string> arguments,
-        Action<string>? onOutputLine = null, CancellationToken cancellationToken = default,
-        bool? simulate = null, bool enforceTimeout = true)
-        => RunCoreAsync(fileName, "", arguments, true, onOutputLine, cancellationToken, simulate, enforceTimeout);
-
-    private async Task<CommandResult> RunCoreAsync(string fileName, string arguments, IReadOnlyList<string>? argumentList,
-        bool echoOutput, Action<string>? onOutputLine, CancellationToken cancellationToken,
-        bool? simulate, bool enforceTimeout)
+    /// <summary>Runs a closed-set tool with separately supplied arguments.</summary>
+    public Task<CommandResult> RunAsync(CommandSpec specification, Action<string>? onOutputLine = null,
+        CancellationToken cancellationToken = default, bool? simulate = null, bool enforceTimeout = true,
+        TimeSpan? timeoutOverride = null)
     {
-        var displayArgs = argumentList is null ? arguments : string.Join(" ", argumentList.Select(arg => $"[{arg}]"));
-        // Do not resolve a program through PATH during simulation. Simulations
-        // must work even when an optional third-party tool is not installed.
-        var commandLine = string.IsNullOrWhiteSpace(displayArgs) ? fileName : $"{fileName} {displayArgs}";
+        ArgumentNullException.ThrowIfNull(specification);
+        return RunCoreAsync(ResolveTrustedExecutable(specification.Tool), specification.Arguments, onOutputLine,
+            cancellationToken, simulate, enforceTimeout, timeoutOverride ?? specification.Timeout);
+    }
+
+    // Kept internal so the safety project can exercise pipe, cancellation and
+    // argument-boundary behavior against its own child process. Production
+    // modules only receive the public CommandSpec entry point above.
+    internal Task<CommandResult> RunForTestAsync(string verifiedExecutable, IReadOnlyList<string> arguments,
+        CancellationToken cancellationToken = default, bool? simulate = null, TimeSpan? timeoutOverride = null)
+    {
+        if (string.IsNullOrWhiteSpace(verifiedExecutable) || !Path.IsPathFullyQualified(verifiedExecutable))
+        {
+            throw new ArgumentException("Las pruebas deben proporcionar una ruta absoluta verificada.", nameof(verifiedExecutable));
+        }
+        return RunCoreAsync(Path.GetFullPath(verifiedExecutable), arguments, null, cancellationToken, simulate,
+            enforceTimeout: true, timeoutOverride);
+    }
+
+    private async Task<CommandResult> RunCoreAsync(string executable, IReadOnlyList<string> arguments,
+        Action<string>? onOutputLine, CancellationToken cancellationToken, bool? simulate,
+        bool enforceTimeout, TimeSpan? timeoutOverride)
+    {
+        ArgumentNullException.ThrowIfNull(arguments);
+        // Arguments can contain profile paths, package names, proxy endpoints, or
+        // encoded script bodies. Keep the audit identity useful without storing
+        // their complete values by default.
+        var commandLine = $"{Path.GetFileName(executable)} ({arguments.Count} argumento(s))";
         cancellationToken.ThrowIfCancellationRequested();
         if (simulate ?? _isDryRun())
         {
             _logger.Warn($"[DRY-RUN] Would execute: {commandLine}");
             onOutputLine?.Invoke($"[SIMULACIÓN] {commandLine}");
-            return new CommandResult { Command = commandLine, IsSimulated = true,
-                StandardOutput = "[Dry-run] Command was simulated and not executed." };
+            return new CommandResult
+            {
+                Command = commandLine,
+                IsSimulated = true,
+                StandardOutput = "[Dry-run] Command was simulated and not executed."
+            };
+        }
+
+        var effectiveTimeout = timeoutOverride ?? _timeout;
+        if (effectiveTimeout <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(timeoutOverride));
         }
 
         var stopwatch = Stopwatch.StartNew();
@@ -60,13 +79,11 @@ public sealed class CommandExecutor
         Process? process = null;
         Task? readers = null;
         using var timeout = new CancellationTokenSource();
-        if (enforceTimeout) timeout.CancelAfter(_timeout);
+        if (enforceTimeout) timeout.CancelAfter(effectiveTimeout);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeout.Token);
 
         try
         {
-            var executable = ResolveTrustedExecutable(fileName);
-            commandLine = string.IsNullOrWhiteSpace(displayArgs) ? executable : $"{executable} {displayArgs}";
             _logger.Info($"Executing: {commandLine}");
             var startInfo = new ProcessStartInfo
             {
@@ -78,22 +95,28 @@ public sealed class CommandExecutor
                 StandardOutputEncoding = Encoding.UTF8,
                 StandardErrorEncoding = Encoding.UTF8
             };
-            if (argumentList is null) startInfo.Arguments = arguments;
-            else foreach (var argument in argumentList) startInfo.ArgumentList.Add(argument);
-            process = new Process { StartInfo = startInfo };
-            if (!process.Start()) throw new InvalidOperationException($"No se pudo iniciar '{fileName}'.");
+            foreach (var argument in arguments)
+            {
+                startInfo.ArgumentList.Add(argument);
+            }
 
-            // Start the deadline before waiting for *either* EOF or process exit.
-            // A silent process, or a descendant holding a pipe open, must not bypass it.
-            var outputTask = DrainAsync(process.StandardOutput, stdout, echoOutput ? onOutputLine : null, linked.Token);
+            process = new Process { StartInfo = startInfo };
+            if (!process.Start()) throw new InvalidOperationException($"No se pudo iniciar '{Path.GetFileName(executable)}'.");
+
+            // The deadline begins before waiting for either EOF or process exit.
+            // A silent process, or a descendant holding a pipe open, cannot bypass it.
+            var outputTask = DrainAsync(process.StandardOutput, stdout, onOutputLine, linked.Token);
             var errorTask = DrainAsync(process.StandardError, stderr, null, linked.Token);
             readers = Task.WhenAll(outputTask, errorTask);
             await Task.WhenAll(readers, process.WaitForExitAsync(linked.Token));
             stopwatch.Stop();
             var result = new CommandResult
             {
-                Command = commandLine, ExitCode = process.ExitCode,
-                StandardOutput = stdout.ToString(), StandardError = stderr.ToString(), Duration = stopwatch.Elapsed
+                Command = commandLine,
+                ExitCode = process.ExitCode,
+                StandardOutput = stdout.ToString(),
+                StandardError = stderr.ToString(),
+                Duration = stopwatch.Elapsed
             };
             _logger.LogCommand(result);
             return result;
@@ -101,7 +124,6 @@ public sealed class CommandExecutor
         catch (OperationCanceledException)
         {
             TryKill(process);
-            // Do not wait indefinitely if a process cannot be killed or a descendant holds a pipe.
             if (process is not null)
             {
                 try { await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5)); } catch { }
@@ -114,7 +136,9 @@ public sealed class CommandExecutor
             var timedOut = timeout.IsCancellationRequested && !cancellationToken.IsCancellationRequested;
             _logger.Warn($"Command {(timedOut ? "timed out" : "cancelled")}: {commandLine}; durationMs={stopwatch.Elapsed.TotalMilliseconds:F0}; output not stored");
             if (timedOut)
-                throw new TimeoutException($"El comando superó el tiempo de espera ({_timeout.TotalMinutes:F1} min). Puede haber cambios parciales; revisa el sistema.");
+            {
+                throw new TimeoutException($"El comando superó el tiempo de espera ({effectiveTimeout.TotalMinutes:F1} min). Puede haber cambios parciales; revisa el sistema.");
+            }
             throw;
         }
         catch (Exception exception)
@@ -122,8 +146,14 @@ public sealed class CommandExecutor
             TryKill(process);
             stopwatch.Stop();
             _logger.Error($"Failed to execute '{commandLine}': {exception}");
-            var result = new CommandResult { Command = commandLine, ExitCode = -1,
-                StandardOutput = stdout.ToString(), StandardError = exception.Message, Duration = stopwatch.Elapsed };
+            var result = new CommandResult
+            {
+                Command = commandLine,
+                ExitCode = -1,
+                StandardOutput = stdout.ToString(),
+                StandardError = exception.Message,
+                Duration = stopwatch.Elapsed
+            };
             _logger.LogCommand(result);
             return result;
         }
@@ -133,59 +163,37 @@ public sealed class CommandExecutor
         }
     }
 
-    /// <summary>
-    /// Resolves named tools to System32. An elevated portable process must not
-    /// use PATH or its current directory to find a program: a dropped executable
-    /// next to WDigger would otherwise run with administrator rights. Callers
-    /// that need a non-system program must pass a deliberately audited absolute
-    /// path; this application currently has no such real-operation path.
-    /// </summary>
-    private static string ResolveTrustedExecutable(string fileName)
+    private static string ResolveTrustedExecutable(WindowsTool tool)
     {
-        if (string.IsNullOrWhiteSpace(fileName))
-        {
-            throw new ArgumentException("No se indicó un ejecutable.", nameof(fileName));
-        }
-
-        if (Path.IsPathFullyQualified(fileName))
-        {
-            return Path.GetFullPath(fileName);
-        }
-
-        if (!string.Equals(fileName, Path.GetFileName(fileName), StringComparison.Ordinal))
-        {
-            throw new InvalidOperationException("Los ejecutables deben ser herramientas del sistema o rutas absolutas auditadas.");
-        }
-
         if (!OperatingSystem.IsWindows())
         {
             throw new PlatformNotSupportedException("WDigger solo puede ejecutar herramientas de Windows.");
         }
 
-        var name = Path.GetFileNameWithoutExtension(fileName);
         var system = Environment.GetFolderPath(Environment.SpecialFolder.System);
         if (string.IsNullOrEmpty(system))
         {
             throw new InvalidOperationException("No se pudo resolver la carpeta del sistema.");
         }
 
-        if (name.Equals("powershell", StringComparison.OrdinalIgnoreCase))
+        return tool switch
         {
-            return Path.Combine(system, "WindowsPowerShell", "v1.0", "powershell.exe");
-        }
-
-        string[] systemTools =
-        {
-            "sfc", "dism", "chkdsk", "netsh", "net", "cmd", "cscript", "pnputil",
-            "rundll32", "wevtutil", "ipconfig", "tracert", "netstat"
+            WindowsTool.PowerShell => Path.Combine(system, "WindowsPowerShell", "v1.0", "powershell.exe"),
+            WindowsTool.BcdEdit => Path.Combine(system, "bcdedit.exe"),
+            WindowsTool.Chkdsk => Path.Combine(system, "chkdsk.exe"),
+            WindowsTool.Cscript => Path.Combine(system, "cscript.exe"),
+            WindowsTool.Dism => Path.Combine(system, "dism.exe"),
+            WindowsTool.Ipconfig => Path.Combine(system, "ipconfig.exe"),
+            WindowsTool.Net => Path.Combine(system, "net.exe"),
+            WindowsTool.Netsh => Path.Combine(system, "netsh.exe"),
+            WindowsTool.Netstat => Path.Combine(system, "netstat.exe"),
+            WindowsTool.PnPUtil => Path.Combine(system, "pnputil.exe"),
+            WindowsTool.Rundll32 => Path.Combine(system, "rundll32.exe"),
+            WindowsTool.Sfc => Path.Combine(system, "sfc.exe"),
+            WindowsTool.Tracert => Path.Combine(system, "tracert.exe"),
+            WindowsTool.Wevtutil => Path.Combine(system, "wevtutil.exe"),
+            _ => throw new InvalidOperationException($"La herramienta '{tool}' no está autorizada.")
         };
-        if (systemTools.Contains(name, StringComparer.OrdinalIgnoreCase))
-        {
-            return Path.Combine(system, name + ".exe");
-        }
-
-        throw new InvalidOperationException(
-            $"El ejecutable '{fileName}' no está autorizado para una sesión elevada. WDigger solo ejecuta herramientas de Windows desde System32.");
     }
 
     private static async Task DrainAsync(StreamReader reader, StringBuilder output, Action<string>? onLine, CancellationToken token)
@@ -219,11 +227,5 @@ public sealed class CommandExecutor
     {
         try { if (process is not null && !process.HasExited) process.Kill(entireProcessTree: true); }
         catch { /* Best effort; caller must report potential partial changes. */ }
-    }
-
-    public static string Shorten(string? text, int maxLength = 70)
-    {
-        if (string.IsNullOrEmpty(text)) return text ?? string.Empty;
-        return text.Length <= maxLength ? text : text[..(maxLength - 3)] + "...";
     }
 }

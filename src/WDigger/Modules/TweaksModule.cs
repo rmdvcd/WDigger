@@ -6,20 +6,20 @@ namespace WDigger.Modules;
 public sealed class TweaksModule : IModule
 {
     public string Name => "Ajustes y privacidad";
-    public string Description => "Ajustes de registro predefinidos con copia del valor anterior; no se ejecutan comandos del JSON.";
+    public string Description => "Ajustes de registro predefinidos con copia verificable del valor anterior; no se ejecutan comandos ni JSON editables.";
 
     public IReadOnlyList<ModuleAction> CreateActions(AppHost host) => new[]
     {
         new ModuleAction("Aplicar un ajuste de registro", "Solo ajustes predefinidos; guarda el valor previo en HKLM antes de modificarlo.",
             (context, token) => ChangeAsync(context, token, revert: false), changesSystem: true,
             confirmation: "Las directivas pueden estar administradas por tu organización. La copia previa se guarda en el registro de este equipo.",
-            canCancel: false, allowedInElevatedSession: true),
+            canCancel: false, allowedInElevatedSession: true, risk: OperationRisk.Moderate,
+            recovery: OperationRecovery.SnapshotAndVerifiedRevert),
         new ModuleAction("Revertir un ajuste de registro", "Restaura la copia anterior creada por esta versión, si el valor no ha cambiado externamente.",
             (context, token) => ChangeAsync(context, token, revert: true), changesSystem: true,
-            confirmation: "Solo se revierten ajustes con copia válida. El historial antiguo no contiene valores anteriores.",
-            canCancel: false, allowedInElevatedSession: true),
-        new ModuleAction("Ver historial de ajustes anterior", "Muestra el historial legado, que no sirve para revertir.",
-            (context, token) => ShowHistory(host, context, token))
+            confirmation: "Solo se revierten ajustes con copia válida. La reversión conserva la copia si no se puede verificar.",
+            canCancel: false, allowedInElevatedSession: true, risk: OperationRisk.Moderate,
+            recovery: OperationRecovery.SnapshotAndVerifiedRevert)
     };
 
     private static async Task ChangeAsync(ModuleExecutionContext context, CancellationToken token, bool revert)
@@ -36,19 +36,19 @@ public sealed class TweaksModule : IModule
             return;
         }
         var service = new RegistryTweakService();
-        if (revert) service.Revert(item.Id); else service.Apply(item.Id);
+        context.StartStep(revert ? "registry-revert" : "registry-apply", $"Preparando el ajuste fijo {item.Id}.");
+        context.EnsurePersistentJournal();
+        try
+        {
+            if (revert) service.Revert(item.Id); else service.Apply(item.Id);
+            context.CompleteStep(OperationStatus.Succeeded, revert ? "Reversión de registro verificada." : "Ajuste de registro verificado.");
+        }
+        catch
+        {
+            context.CompleteStep(OperationStatus.Failed, "El ajuste de registro no terminó de forma verificable.");
+            throw;
+        }
         context.Host.Logger.Info($"Registry tweak {(revert ? "reverted" : "applied")}: {item.Id}");
         context.WriteLine(revert ? "Valor anterior restaurado y verificado." : "Valor actualizado y verificado; copia previa guardada en HKLM.", OutputKind.Info);
-    }
-
-    private static Task ShowHistory(AppHost host, ModuleExecutionContext context, CancellationToken token)
-    {
-        token.ThrowIfCancellationRequested();
-        var records = host.TweakHistory.Records.OrderByDescending(record => record.AppliedAt).ToList();
-        if (records.Count == 0) { context.WriteLine("No hay historial antiguo de ajustes.", OutputKind.Warning); return Task.CompletedTask; }
-        context.WriteLine("El historial anterior no demuestra éxito ni contiene el estado previo; no puede usarse para revertir.", OutputKind.Warning);
-        context.ShowTable("Historial anterior", new[] { "Id", "Nombre", "Aplicado" },
-            records.Select(record => new[] { record.TweakId, record.TweakName, record.AppliedAt.ToString("yyyy-MM-dd HH:mm") }));
-        return Task.CompletedTask;
     }
 }

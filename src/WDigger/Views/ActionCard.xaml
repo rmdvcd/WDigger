@@ -7,6 +7,8 @@
     <Border CornerRadius="12" Padding="14"
             Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
+            AutomationProperties.Name="{x:Bind ViewModel.Title, Mode=OneWay}"
+            AutomationProperties.HelpText="{x:Bind ViewModel.Description, Mode=OneWay}"
             Tapped="Card_Tapped">
         <Grid>
             <Grid.RowDefinitions>
@@ -45,6 +47,8 @@
                 </Border>
                 <Button x:Name="RunButton" Grid.Column="1" Content="Ejecutar"
                         Style="{ThemeResource AccentButtonStyle}" IsEnabled="{x:Bind ViewModel.IsAvailable, Mode=OneWay}"
+                        AutomationProperties.Name="{x:Bind ViewModel.Title, Mode=OneWay}"
+                        AutomationProperties.HelpText="{x:Bind ViewModel.Description, Mode=OneWay}"
                         MinWidth="96" Height="32" FontSize="12" Click="RunButton_Click" />
             </Grid>
         </Grid>

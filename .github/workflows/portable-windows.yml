@@ -20,6 +20,28 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
+      - name: Verify reviewed execution boundary
+        shell: pwsh
+        run: |
+          $patterns = @(
+            'ProcessStartInfo\.Arguments',
+            'cmd /c',
+            'RunCommandAsync\(\s*"',
+            'RunPowerShellAsync\(\s*\$'
+          )
+          $matches = foreach ($pattern in $patterns) {
+            Get-ChildItem -Path src\WDigger -Recurse -Filter *.cs | Select-String -Pattern $pattern
+          }
+          if ($matches) {
+            $matches | ForEach-Object { Write-Error "$($_.Path):$($_.LineNumber): $($_.Line.Trim())" }
+            throw "Found a legacy command-string execution path."
+          }
+          Get-ChildItem -Path src\WDigger\PowerShell\Scripts -Filter *.ps1 | ForEach-Object {
+            $script = $_
+            try { [void][ScriptBlock]::Create((Get-Content -LiteralPath $script.FullName -Raw)) }
+            catch { throw "PowerShell syntax validation failed for $($script.Name): $($_.Exception.Message)" }
+          }
+
       - name: Run safety tests
         run: dotnet run --project "tests\WDigger.SafetyTests\WDigger.SafetyTests.csproj" -c Release
 
@@ -43,6 +65,39 @@ jobs:
           if ($lines.Count -eq 0) { $lines = @(Get-Content build.log | Select-Object -Last 60) }
           foreach ($l in $lines) { Write-Output ("::error::" + ($l -replace "`r", "" -replace "`n", " ")) }
           exit 1
+
+      - name: Validate embedded PowerShell script catalog
+        shell: pwsh
+        run: |
+          $assemblyPath = Get-ChildItem "src\WDigger\bin\Release" -Recurse -Filter WDigger.dll |
+            Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+          if ($null -eq $assemblyPath) { throw "WDigger.dll was not produced by the build." }
+          $assembly = [Reflection.Assembly]::LoadFrom($assemblyPath.FullName)
+          $catalog = $assembly.GetType('WDigger.Core.PowerShellScriptCatalog', $true)
+          $identifierType = $assembly.GetType('WDigger.Core.PowerShellScriptId', $true)
+          $effectType = $assembly.GetType('WDigger.Core.CommandEffect', $true)
+          $create = $catalog.GetMethod('Create')
+          $readOnly = [Enum]::Parse($effectType, 'ReadOnly')
+          foreach ($identifier in [Enum]::GetValues($identifierType)) {
+            $arguments = [string[]]@()
+            if ($identifier.ToString() -notin @('AppxInventory', 'ResetWindowsUpdate')) {
+              $arguments = [string[]]@('validation-value')
+            }
+            $invokeArguments = [object[]]@($identifier, $null, $readOnly, $null)
+            $invokeArguments[1] = [string[]]$arguments
+            $specification = $create.Invoke($null, $invokeArguments)
+            $actual = @($specification.Arguments)
+            $expectedPrefix = @('-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand')
+            if ($actual.Count -ne 7 -or [string]::IsNullOrWhiteSpace($actual[6])) {
+              throw "Embedded script catalog invocation contract failed for $identifier."
+            }
+            for ($index = 0; $index -lt $expectedPrefix.Count; $index++) {
+              if ($actual[$index] -cne $expectedPrefix[$index]) {
+                throw "Embedded script catalog prefix failed for $identifier at argument $index."
+              }
+            }
+          }
+          Write-Host 'Embedded PowerShell script catalog verified without executing any script.'
 
       - name: Publish native portable EXE
         if: steps.build.outputs.exitcode == '0'

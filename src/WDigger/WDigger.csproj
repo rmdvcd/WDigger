@@ -42,14 +42,10 @@
     <PackageReference Include="System.Management" Version="10.0.14" />
   </ItemGroup>
 
-  <!-- Defaults travel inside the EXE and are materialized beside it on demand. -->
   <ItemGroup>
-    <EmbeddedResource Include="..\..\config\tweaks.json"
-                      Link="config\tweaks.json"
-                      LogicalName="WDigger.Configuration.tweaks.json" />
-    <EmbeddedResource Include="..\..\config\software.json"
-                      Link="config\software.json"
-                      LogicalName="WDigger.Configuration.software.json" />
+    <!-- Fixed, reviewed scripts only. Runtime module input is passed as data, never script text. -->
+    <EmbeddedResource Include="PowerShell\Scripts\*.ps1"
+                      LogicalName="WDigger.PowerShell.Scripts.%(Filename).ps1" />
   </ItemGroup>
 
 </Project>

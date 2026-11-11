@@ -2,6 +2,8 @@ using System.Management;
 
 namespace WDigger.Core;
 
+public sealed record RestorePointResult(bool Created, string? Reference, string Summary);
+
 /// <summary>Creates and verifies a new System Restore point; failure is never treated as success.</summary>
 public sealed class RestorePointManager
 {
@@ -11,7 +13,7 @@ public sealed class RestorePointManager
 
     public RestorePointManager(AppLogger logger) => _logger = logger;
 
-    public bool Create(string description)
+    public RestorePointResult Create(string description)
     {
         try
         {
@@ -29,8 +31,9 @@ public sealed class RestorePointManager
             var returnValue = Convert.ToInt32(outParams["ReturnValue"]);
             if (returnValue != 0)
             {
-                _logger.Warn($"Restore point creation returned code {returnValue}.");
-                return false;
+                var summary = $"Windows devolvió el código {returnValue} al crear el punto de restauración.";
+                _logger.Warn(summary);
+                return new RestorePointResult(false, null, summary);
             }
 
             using var searcher = new ManagementObjectSearcher(scope, new ObjectQuery("SELECT SequenceNumber, Description, CreationTime FROM SystemRestore"));
@@ -40,17 +43,24 @@ public sealed class RestorePointManager
                 using (point)
                 {
                     if (!string.Equals(point["Description"]?.ToString(), uniqueDescription, StringComparison.Ordinal)) continue;
-                    _logger.Info($"Verified restore point sequence={point["SequenceNumber"]}; creationTime={point["CreationTime"]}; description={uniqueDescription}");
-                    return true;
+                    var sequence = point["SequenceNumber"]?.ToString() ?? "unknown";
+                    var createdAt = point["CreationTime"]?.ToString() ?? "unknown";
+                    var reference = $"sequence={sequence}; creationTime={createdAt}";
+                    var summary = $"Punto de restauración verificado ({reference}).";
+                    _logger.Info($"{summary}; description={uniqueDescription}");
+                    return new RestorePointResult(true, reference, summary);
                 }
             }
-            _logger.Warn("Windows returned success but a new restore point could not be verified (it may have been throttled).");
-            return false;
+
+            const string notVerified = "Windows devolvió éxito, pero el punto de restauración no se pudo verificar (puede haberse aplicado la limitación de frecuencia).";
+            _logger.Warn(notVerified);
+            return new RestorePointResult(false, null, notVerified);
         }
         catch (Exception exception)
         {
-            _logger.Error($"Failed to create or verify restore point: {exception.Message}");
-            return false;
+            var summary = $"No se pudo crear o verificar el punto de restauración: {exception.Message}";
+            _logger.Error(summary);
+            return new RestorePointResult(false, null, summary);
         }
     }
 }
