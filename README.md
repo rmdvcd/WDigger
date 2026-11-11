@@ -1,6 +1,6 @@
 # WDigger
 
-WDigger es una herramienta portable WinUI 3 de diagnóstico y reparación de Windows 10/11 x64. Esta versión está **en desarrollo y no está validada para producción**. Consulta [AUDITORIA_Y_PLAN.md](AUDITORIA_Y_PLAN.md) y [ESTADO_CAMBIOS_SEGURIDAD.md](ESTADO_CAMBIOS_SEGURIDAD.md).
+WDigger es una herramienta portable WinUI 3 de diagnóstico y reparación de Windows 10/11 x64. Esta versión está **en desarrollo y no está validada para producción**. Consulta la auditoría histórica [AUDITORIA_Y_PLAN.md](AUDITORIA_Y_PLAN.md), el plan vigente [PLAN_DE_CAMBIOS_2026-11-11.md](PLAN_DE_CAMBIOS_2026-11-11.md) y [ESTADO_CAMBIOS_SEGURIDAD.md](ESTADO_CAMBIOS_SEGURIDAD.md).
 
 ## Permisos y operaciones reales
 
