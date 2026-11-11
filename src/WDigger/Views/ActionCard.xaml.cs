@@ -15,6 +15,43 @@ public sealed partial class ActionCard : UserControl
 {
     private ActionCardViewModel? _viewModel;
 
+    /// <summary>
+    /// Dependency property for the card's view-model. Assigning the view-model
+    /// through this property (instead of setting DataContext in the
+    /// DataTemplate) avoids the WinUI 3 generated-bindings DataContext
+    /// recursion that causes a stack overflow crash (0xc00000fd).
+    /// </summary>
+    public static readonly DependencyProperty ViewModelProperty = DependencyProperty.Register(
+        nameof(ViewModel), typeof(ActionCardViewModel), typeof(ActionCard), new PropertyMetadata(null, OnViewModelChanged));
+
+    public ActionCardViewModel? ViewModel
+    {
+        get => (ActionCardViewModel?)GetValue(ViewModelProperty);
+        set => SetValue(ViewModelProperty, value);
+    }
+
+    private static void OnViewModelChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is not ActionCard card)
+        {
+            return;
+        }
+
+        if (card._viewModel is not null)
+        {
+            card._viewModel.PropertyChanged -= card.ViewModel_PropertyChanged;
+        }
+
+        card._viewModel = e.NewValue as ActionCardViewModel;
+
+        if (card._viewModel is not null)
+        {
+            card._viewModel.PropertyChanged += card.ViewModel_PropertyChanged;
+        }
+
+        card.UpdateRunButtonState();
+    }
+
     public ActionCard()
     {
         InitializeComponent();
@@ -37,13 +74,12 @@ public sealed partial class ActionCard : UserControl
 
     private async Task ExecuteAsync()
     {
-        if (DataContext is not ActionCardViewModel viewModel || viewModel.IsRunning)
+        if (ViewModel is not ActionCardViewModel viewModel || viewModel.IsRunning)
         {
             return;
         }
 
         _viewModel = viewModel;
-        viewModel.PropertyChanged += ViewModel_PropertyChanged;
         try
         {
             UpdateRunButtonState();
@@ -51,7 +87,6 @@ public sealed partial class ActionCard : UserControl
         }
         finally
         {
-            viewModel.PropertyChanged -= ViewModel_PropertyChanged;
             _viewModel = null;
         }
     }

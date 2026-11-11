@@ -25,11 +25,11 @@
                     <FontIcon Glyph="&#xE90F;" FontSize="15" Foreground="{ThemeResource AppAccentBrush}"
                               HorizontalAlignment="Center" VerticalAlignment="Center" />
                 </Border>
-                <TextBlock Grid.Column="1" Text="{Binding Title}" FontWeight="SemiBold" FontSize="13.5"
+                <TextBlock Grid.Column="1" Text="{x:Bind ViewModel.Title, Mode=OneWay}" FontWeight="SemiBold" FontSize="13.5"
                            TextWrapping="Wrap" MaxLines="2" VerticalAlignment="Center" />
             </Grid>
 
-            <TextBlock Grid.Row="1" Margin="0,8,0,10" Text="{Binding Description}"
+            <TextBlock Grid.Row="1" Margin="0,8,0,10" Text="{x:Bind ViewModel.Description, Mode=OneWay}"
                        FontSize="11.5" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                        TextWrapping="Wrap" />
 
@@ -40,11 +40,11 @@
                 </Grid.ColumnDefinitions>
                 <Border HorizontalAlignment="Left" VerticalAlignment="Center" CornerRadius="8" Padding="8,3,9,3"
                         Background="{ThemeResource LayerFillColorDefaultBrush}">
-                    <TextBlock Text="{Binding RunningBadgeText}" FontSize="10" FontWeight="SemiBold"
+                    <TextBlock Text="{x:Bind ViewModel.RunningBadgeText, Mode=OneWay}" FontSize="10" FontWeight="SemiBold"
                                Foreground="{ThemeResource TextFillColorPrimaryBrush}" CharacterSpacing="40" />
                 </Border>
                 <Button x:Name="RunButton" Grid.Column="1" Content="Ejecutar"
-                        Style="{ThemeResource AccentButtonStyle}" IsEnabled="{Binding IsAvailable}"
+                        Style="{ThemeResource AccentButtonStyle}" IsEnabled="{x:Bind ViewModel.IsAvailable, Mode=OneWay}"
                         MinWidth="96" Height="32" FontSize="12" Click="RunButton_Click" />
             </Grid>
         </Grid>
