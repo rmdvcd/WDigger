@@ -236,7 +236,7 @@
                 </StackPanel>
             </Border>
 
-            <TextBlock Text="WDigger 3.0 · Herramienta de uso personal · La interfaz usa los permisos del usuario"
+            <TextBlock Text="WDigger 3.0.1 · Herramienta de uso personal · Inicio obligatorio como administrador"
                        FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Margin="0,2,0,0" />
         </StackPanel>
     </ScrollViewer>

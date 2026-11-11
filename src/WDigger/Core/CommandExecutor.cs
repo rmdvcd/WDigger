@@ -41,9 +41,10 @@ public sealed class CommandExecutor
         bool echoOutput, Action<string>? onOutputLine, CancellationToken cancellationToken,
         bool? simulate, bool enforceTimeout)
     {
-        var executable = ResolveSystemExecutable(fileName);
         var displayArgs = argumentList is null ? arguments : string.Join(" ", argumentList.Select(arg => $"[{arg}]"));
-        var commandLine = string.IsNullOrWhiteSpace(displayArgs) ? executable : $"{executable} {displayArgs}";
+        // Do not resolve a program through PATH during simulation. Simulations
+        // must work even when an optional third-party tool is not installed.
+        var commandLine = string.IsNullOrWhiteSpace(displayArgs) ? fileName : $"{fileName} {displayArgs}";
         cancellationToken.ThrowIfCancellationRequested();
         if (simulate ?? _isDryRun())
         {
@@ -53,7 +54,6 @@ public sealed class CommandExecutor
                 StandardOutput = "[Dry-run] Command was simulated and not executed." };
         }
 
-        _logger.Info($"Executing: {commandLine}");
         var stopwatch = Stopwatch.StartNew();
         var stdout = new StringBuilder();
         var stderr = new StringBuilder();
@@ -65,6 +65,9 @@ public sealed class CommandExecutor
 
         try
         {
+            var executable = ResolveTrustedExecutable(fileName);
+            commandLine = string.IsNullOrWhiteSpace(displayArgs) ? executable : $"{executable} {displayArgs}";
+            _logger.Info($"Executing: {commandLine}");
             var startInfo = new ProcessStartInfo
             {
                 FileName = executable,
@@ -130,16 +133,59 @@ public sealed class CommandExecutor
         }
     }
 
-    private static string ResolveSystemExecutable(string fileName)
+    /// <summary>
+    /// Resolves named tools to System32. An elevated portable process must not
+    /// use PATH or its current directory to find a program: a dropped executable
+    /// next to WDigger would otherwise run with administrator rights. Callers
+    /// that need a non-system program must pass a deliberately audited absolute
+    /// path; this application currently has no such real-operation path.
+    /// </summary>
+    private static string ResolveTrustedExecutable(string fileName)
     {
-        if (!OperatingSystem.IsWindows() || !string.Equals(fileName, Path.GetFileName(fileName), StringComparison.Ordinal)) return fileName;
+        if (string.IsNullOrWhiteSpace(fileName))
+        {
+            throw new ArgumentException("No se indicó un ejecutable.", nameof(fileName));
+        }
+
+        if (Path.IsPathFullyQualified(fileName))
+        {
+            return Path.GetFullPath(fileName);
+        }
+
+        if (!string.Equals(fileName, Path.GetFileName(fileName), StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException("Los ejecutables deben ser herramientas del sistema o rutas absolutas auditadas.");
+        }
+
+        if (!OperatingSystem.IsWindows())
+        {
+            throw new PlatformNotSupportedException("WDigger solo puede ejecutar herramientas de Windows.");
+        }
+
         var name = Path.GetFileNameWithoutExtension(fileName);
         var system = Environment.GetFolderPath(Environment.SpecialFolder.System);
-        if (string.IsNullOrEmpty(system)) throw new InvalidOperationException("No se pudo resolver la carpeta del sistema.");
+        if (string.IsNullOrEmpty(system))
+        {
+            throw new InvalidOperationException("No se pudo resolver la carpeta del sistema.");
+        }
+
         if (name.Equals("powershell", StringComparison.OrdinalIgnoreCase))
+        {
             return Path.Combine(system, "WindowsPowerShell", "v1.0", "powershell.exe");
-        string[] systemTools = { "sfc", "dism", "chkdsk", "netsh", "net", "cmd", "cscript", "pnputil", "rundll32", "wevtutil", "ipconfig", "tracert", "netstat" };
-        return systemTools.Contains(name, StringComparer.OrdinalIgnoreCase) ? Path.Combine(system, name + ".exe") : fileName;
+        }
+
+        string[] systemTools =
+        {
+            "sfc", "dism", "chkdsk", "netsh", "net", "cmd", "cscript", "pnputil",
+            "rundll32", "wevtutil", "ipconfig", "tracert", "netstat"
+        };
+        if (systemTools.Contains(name, StringComparer.OrdinalIgnoreCase))
+        {
+            return Path.Combine(system, name + ".exe");
+        }
+
+        throw new InvalidOperationException(
+            $"El ejecutable '{fileName}' no está autorizado para una sesión elevada. WDigger solo ejecuta herramientas de Windows desde System32.");
     }
 
     private static async Task DrainAsync(StreamReader reader, StringBuilder output, Action<string>? onLine, CancellationToken token)

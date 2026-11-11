@@ -21,7 +21,7 @@ namespace WDigger.UI;
 /// </summary>
 public sealed partial class ShellWindow : Window
 {
-    internal const string AppVersion = "3.0.0";
+    internal const string AppVersion = "3.0.1";
 
     private readonly AppHost _host;
     private readonly AppSettings _settings;
@@ -61,8 +61,9 @@ public sealed partial class ShellWindow : Window
         AppWindow.Resize(new SizeInt32(1440, 900));
 
         Dialogs = new DialogService(this);
+        ElevationPolicy.RequireElevatedProcess();
         _host = AppHost.Create(AppContext.BaseDirectory);
-        PrivilegeLabel.Text = _host.IsAdministrator ? "ADMINISTRADOR" : "SIN ELEVAR";
+        PrivilegeLabel.Text = "ADMINISTRADOR";
         RootGrid.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler(RootGrid_PointerPressed), true);
         _settings = AppSettings.Load(_host.ConfigDirectory);
         _moduleIndex = ModuleCatalog.Create().ToDictionary(entry => entry.Tag, StringComparer.OrdinalIgnoreCase);
@@ -500,7 +501,7 @@ public sealed partial class ShellWindow : Window
         AddShortcut(VirtualKey.R, VirtualKeyModifiers.Control, async () =>
         {
             if (_isBusy) return;
-            await Dialogs.ShowMessageAsync("Reparaciones", "Abre Reparación del sistema para seleccionar una operación. Algunas requieren una sesión abierta como administrador; las demás siguen bloqueadas. F5 inicia el análisis.");
+            await Dialogs.ShowMessageAsync("Reparaciones", "WDigger se inició como administrador. Abre Reparación del sistema para seleccionar una operación; las acciones suspendidas seguirán bloqueadas hasta completar su revisión. F5 inicia el análisis.");
         });
         AddShortcut(VirtualKey.L, VirtualKeyModifiers.Control, () =>
         {
@@ -544,7 +545,7 @@ public sealed partial class ShellWindow : Window
             var (title, reason) = decision switch
             {
                 OperationDecision.BlockedPendingReview => ("Acción no disponible", "Esta operación sigue suspendida hasta completar su revisión de seguridad y recuperación. Puedes usar la simulación."),
-                OperationDecision.AdministratorRequired => ("Permisos necesarios", "Para esta operación concreta, cierra WDigger y ábrelo mediante Ejecutar como administrador. Esto elevará toda la aplicación, no solo la reparación. La simulación no requiere elevación."),
+                OperationDecision.AdministratorRequired => ("Elevación no disponible", "WDigger debe iniciarse elevado. La sesión actual no tiene un token de administrador, por lo que la acción se bloqueó. Cierra la aplicación y vuelve a aceptar el aviso de Control de cuentas de usuario."),
                 _ => ("Registro no disponible", "La operación real está bloqueada porque no se puede guardar el registro. Libera espacio o usa una carpeta de datos escribible.")
             };
             await Dialogs.ShowMessageAsync(title, reason);
@@ -689,6 +690,7 @@ public sealed partial class ShellWindow : Window
     private void ShowWelcome()
     {
         AppendOutput($"WDigger {AppVersion} · WinUI 3 · Fluent Design", OutputKind.Success);
+        AppendOutput("Sesión iniciada con permisos de administrador.", OutputKind.Info);
         AppendOutput($"Ubicación de datos: {_host.BaseDirectory}", OutputKind.Muted);
         AppendOutput($"Registro de auditoría: {_host.Logger.LogFilePath}", OutputKind.Muted);
         if (!_host.Logger.IsPersistent) AppendOutput("No hay almacenamiento para el registro persistente. Las operaciones de modificación permanecen bloqueadas.", OutputKind.Warning);
@@ -716,7 +718,7 @@ public sealed partial class ShellWindow : Window
             });
             panel.Children.Add(new TextBlock
             {
-                Text = "Portable · .NET 10 · WinUI 3 · La interfaz se ejecuta con los permisos del usuario",
+                Text = "Portable · .NET 10 · WinUI 3 · Inicio obligatorio como administrador",
                 TextWrapping = TextWrapping.Wrap,
                 Foreground = textBrush
             });

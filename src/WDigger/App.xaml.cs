@@ -5,7 +5,7 @@ using WDigger.UI;
 
 namespace WDigger;
 
-/// <summary>Application entry point; the UI runs with the caller's token.</summary>
+/// <summary>Application entry point; WDigger only runs with an elevated administrator token.</summary>
 public partial class App : Application
 {
     private ShellWindow? _window;
@@ -42,6 +42,10 @@ public partial class App : Application
     {
         try
         {
+            // The manifest requests requireAdministrator. Keep a second guard so
+            // a malformed package or an unusual launcher cannot expose the UI
+            // with a filtered token.
+            ElevationPolicy.RequireElevatedProcess();
             _window = new ShellWindow();
             _window.Activate();
         }
@@ -51,7 +55,7 @@ public partial class App : Application
             try
             {
                 NativeMessageBox.Show(
-                    $"WDigger no puede continuar.\n\n{exception.Message}\n\nConsulta WDigger.crash.log junto al ejecutable para obtener más detalles.",
+                    $"WDigger no puede continuar.\n\n{exception.Message}\n\nConsulta WDigger.crash.log junto al ejecutable o en %LOCALAPPDATA%\\WDigger\\logs para obtener más detalles.",
                     "Error de WDigger",
                     NativeMessageBox.Icon.Error);
             }

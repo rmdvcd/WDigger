@@ -42,7 +42,7 @@ public sealed class ModuleAction
     public string? UnavailableReason { get; }
     public bool CanCancel { get; }
     public bool WritesFile { get; }
-    /// <summary>Explicitly reviewed, hard-coded actions allowed in a manually elevated session.</summary>
+    /// <summary>Explicitly reviewed, hard-coded actions allowed in the required elevated session.</summary>
     public bool AllowedInElevatedSession { get; }
     public Func<ModuleExecutionContext, CancellationToken, Task> Execute { get; }
 

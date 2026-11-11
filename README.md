@@ -4,7 +4,7 @@ WDigger es una herramienta portable WinUI 3 de diagnóstico y reparación de Win
 
 ## Permisos y operaciones reales
 
-La interfaz arranca con los permisos del usuario (`asInvoker`). El diagnóstico no necesita elevación. Para utilizar las operaciones reales habilitadas, abre explícitamente WDigger **como administrador**. Esto eleva toda la aplicación: todavía no existe un auxiliar aislado. Las operaciones de terceros y configuraciones editables no están autorizadas para cambios reales.
+WDigger declara `requireAdministrator` en el manifiesto y **solo se inicia con un token elevado de administrador**. Windows muestra el aviso de Control de cuentas de usuario en cada inicio; si se rechaza, la aplicación no llega a abrirse. Como no existe un auxiliar aislado, se eleva toda la interfaz, incluidos diagnóstico y navegación. Las operaciones de terceros y las configuraciones editables siguen sin estar autorizadas para cambios reales.
 
 | Operación | Estado actual |
 |---|---|
@@ -48,4 +48,4 @@ dotnet publish src/WDigger/WDigger.csproj -c Release -p:PublishProfile=Portable-
 
 El ejecutable se genera en `artifacts/portable/WDigger.exe`. `.github/workflows/portable-windows.yml` prepara las pruebas, compilación y publicación; `ci-check-app-start.ps1` es una prueba de arranque opcional para Windows interactivo.
 
-**Verificación pendiente:** compilar y ejecutar pruebas y escenarios en máquinas virtuales desechables Windows 10/11; probar UAC, denegación de permisos, restauración, cancelación, salida y rutas, y alto contraste/Narrator. No se han probado reparaciones reales en esta sesión. El plan completo, especialmente auxiliar elevado, rollback e interpretación localizada, continúa pendiente.
+**Verificación pendiente:** compilar y ejecutar pruebas y escenarios en máquinas virtuales desechables Windows 10/11; probar la aceptación y el rechazo de UAC (el rechazo debe impedir el inicio), restauración, cancelación, salida y rutas, y alto contraste/Narrator. No se han probado reparaciones reales en esta sesión. El plan completo, especialmente un auxiliar elevado con mínimo privilegio, rollback e interpretación localizada, continúa pendiente.

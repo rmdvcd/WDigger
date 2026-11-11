@@ -24,11 +24,13 @@ public sealed class SoftwareModule : IModule
         new ModuleAction(
             "Buscar un paquete",
             "Busca en los orígenes configurados de Winget.",
-            (context, token) => SearchAsync(host, context, token)),
+            (context, token) => SearchAsync(host, context, token),
+            unavailableReason: "La ejecución de Winget desde una aplicación siempre elevada está suspendida hasta verificar la ruta, firma e identidad del paquete en cada equipo."),
         new ModuleAction(
             "Listar paquetes instalados",
             "Muestra el inventario de aplicaciones conocido por Winget.",
-            (context, token) => context.RunCommandAsync("winget", "list --accept-source-agreements", token)),
+            (context, token) => context.RunCommandAsync("winget", "list --accept-source-agreements", token),
+            unavailableReason: "La ejecución de Winget desde una aplicación siempre elevada está suspendida hasta verificar la ruta, firma e identidad del paquete en cada equipo."),
         new ModuleAction(
             "Quitar un paquete Appx",
             "Selecciona un único paquete del usuario actual; no elimina paquetes provisionados ni para otros usuarios.",

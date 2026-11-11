@@ -6,6 +6,8 @@
 
 **Criterios:** skills adjuntas `winrepair-core`, `winrepair-ux`, `winrepair-ui` y `winrepair-ix`.
 
+> **Actualización de implementación — 11 de noviembre de 2026:** por el requisito operativo actual, la rama de trabajo usa `requireAdministrator` y valida el token elevado al arrancar. Esto sustituye las referencias de este informe a un manifiesto `asInvoker` como descripción del estado presente; no invalida la recomendación de P1 de volver a mínimo privilegio mediante un auxiliar restringido. Las integraciones de Winget y WinFR se mantienen suspendidas en sesiones elevadas hasta verificar de forma independiente la ruta y la firma de sus binarios.
+
 ## 1. Resumen ejecutivo
 
 WDigger dispone de una base WinUI 3 razonable para una herramienta portable: navegación por módulos, indicadores de acciones, salida integrada, bloqueo de ejecución simultánea y confirmaciones para muchas operaciones. No obstante, su arquitectura actual es principalmente un **lanzador de utilidades**, no un flujo de diagnóstico estructurado previo a la reparación. Las cuatro skills exigen cambios sustanciales en privilegios, ejecución, reversibilidad, resultados y accesibilidad.
