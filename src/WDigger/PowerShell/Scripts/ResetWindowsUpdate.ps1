@@ -66,7 +66,7 @@ finally {
                 (Get-Service -Name $name).WaitForStatus('Running', [TimeSpan]::FromMinutes(2))
             }
             catch {
-                $failures.Add("No se pudo reiniciar $name: $($_.Exception.Message)")
+                $failures.Add("No se pudo reiniciar ${name}: $($_.Exception.Message)")
             }
         }
     }
