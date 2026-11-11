@@ -12,7 +12,14 @@ namespace WDigger.UI;
 /// </summary>
 public sealed class DialogService
 {
-    private static readonly SolidColorBrush DangerHintBrush = new(Microsoft.UI.ColorHelper.FromArgb(255, 196, 43, 28));
+    private static Brush? DangerHintBrush
+    {
+        get
+        {
+            try { return Application.Current.Resources["DangerBrush"] as Brush; }
+            catch { return null; }
+        }
+    }
 
     private readonly Window _window;
 

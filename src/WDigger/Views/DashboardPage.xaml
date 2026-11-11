@@ -27,6 +27,45 @@
                      Title="Modo simulación activo"
                      Message="Las acciones que modifican el sistema se registrarán en el registro, pero no se ejecutarán." />
 
+            <Border Padding="18" CornerRadius="10"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                <StackPanel Spacing="10">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="2">
+                            <TextBlock Text="HALLAZGOS DE DIAGNÓSTICO" FontSize="10" FontWeight="SemiBold" CharacterSpacing="100"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <TextBlock x:Name="DiagnosticSummaryText" Text="Aún no hay un análisis reciente. Ejecuta el diagnóstico antes de decidir reparar."
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+                        <Button Grid.Column="1" Click="OpenDiagnosticsButton_Click" VerticalAlignment="Center"
+                                AutomationProperties.Name="Abrir diagnóstico">
+                            <TextBlock Text="Abrir diagnóstico" />
+                        </Button>
+                    </Grid>
+                    <ItemsControl x:Name="DiagnosticSummary" AutomationProperties.LiveSetting="Polite">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Padding="10" CornerRadius="6" Margin="0,2"
+                                        Background="{ThemeResource LayerFillColorDefaultBrush}">
+                                    <StackPanel Spacing="3">
+                                        <TextBlock Text="{Binding Header}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                        <TextBlock Text="{Binding Summary}" TextWrapping="Wrap"
+                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                        <TextBlock Text="{Binding Recommendation}" TextWrapping="Wrap" FontSize="11"
+                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
             <!-- Stat cards -->
             <Grid ColumnSpacing="12">
                 <Grid.ColumnDefinitions>
@@ -207,6 +246,11 @@
                         <TextBlock Text="REGISTRO DE AUDITORÍA" FontSize="10" FontWeight="SemiBold" CharacterSpacing="100"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         <TextBlock x:Name="LogFolderText" Text="" IsTextSelectionEnabled="True" FontSize="12" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="JOURNAL DE OPERACIONES" FontSize="10" FontWeight="SemiBold" CharacterSpacing="100"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <TextBlock x:Name="JournalFolderText" Text="" IsTextSelectionEnabled="True" FontSize="12" TextWrapping="Wrap" />
                     </StackPanel>
                     <StackPanel Spacing="2">
                         <TextBlock Text="CONFIGURACIÓN" FontSize="10" FontWeight="SemiBold" CharacterSpacing="100"

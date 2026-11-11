@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.Reflection;
 using WDigger.Core;
-using WDigger.Models;
 using WDigger.Diagnostics;
 using Microsoft.Win32;
 using System.Xml.Linq;
@@ -43,48 +42,54 @@ try
 
     using var logger = new AppLogger(testDirectory);
     var executable = Environment.ProcessPath ?? throw new Exception("No se pudo determinar el proceso de pruebas.");
-    var prefix = string.Equals(Path.GetFileNameWithoutExtension(executable), "dotnet", StringComparison.OrdinalIgnoreCase)
-        ? $"\"{Assembly.GetExecutingAssembly().Location}\" " : "";
-    string Child(string mode) => $"{prefix}--child {mode}";
+    IReadOnlyList<string> Child(string mode, params string[] extra)
+    {
+        var values = new List<string>();
+        if (string.Equals(Path.GetFileNameWithoutExtension(executable), "dotnet", StringComparison.OrdinalIgnoreCase))
+        {
+            values.Add(Assembly.GetExecutingAssembly().Location);
+        }
+        values.Add("--child");
+        values.Add(mode);
+        values.AddRange(extra);
+        return values;
+    }
     var executor = new CommandExecutor(logger, () => true, TimeSpan.FromSeconds(20));
     var timeoutExecutor = new CommandExecutor(logger, () => true, TimeSpan.FromSeconds(2));
 
-    var actual = await executor.RunAsync(executable, Child("exit"), simulate: false);
+    var actual = await executor.RunForTestAsync(executable, Child("exit"), simulate: false);
     Require(!actual.Success && actual.ExitCode == 7, "nonzero exit was not preserved");
     Require(actual.StandardOutput.Contains("output-marker") && actual.StandardError.Contains("error-marker"), "stdout/stderr not captured separately");
 
-    var untrustedProgram = await executor.RunAsync("wdigger-tool-not-authorized", simulate: false);
-    Require(!untrustedProgram.Success && untrustedProgram.ExitCode == -1,
-        "unknown executable name was not rejected");
-    if (OperatingSystem.IsWindows())
+    var rejectedTool = false;
+    try
     {
-        Require(untrustedProgram.StandardError.Contains("no está autorizado", StringComparison.OrdinalIgnoreCase),
-            "elevated executable allowlist was bypassed");
+        await executor.RunAsync(new CommandSpec((WindowsTool)999, Array.Empty<string>()), simulate: false);
     }
+    catch (Exception exception) when (exception is InvalidOperationException or PlatformNotSupportedException)
+    {
+        rejectedTool = true;
+    }
+    Require(rejectedTool, "unknown executable identifier was not rejected");
 
     var argumentValues = new[] { "with spaces", "quote\" --option", @"C:\path with spaces\" };
-    var childArgs = new List<string>();
-    if (prefix.Length > 0) childArgs.Add(Assembly.GetExecutingAssembly().Location);
-    childArgs.Add("--child");
-    childArgs.Add("arguments");
-    childArgs.AddRange(argumentValues);
-    var argsResult = await executor.RunArgumentsAsync(executable, childArgs, simulate: false);
+    var argsResult = await executor.RunForTestAsync(executable, Child("arguments", argumentValues), simulate: false);
     var received = System.Text.Json.JsonSerializer.Deserialize<string[]>(argsResult.StandardOutput.Trim());
     Require(argsResult.Success && received is not null && received.SequenceEqual(argumentValues), "argument boundaries not preserved");
 
-    var large = await executor.RunAsync(executable, Child("large"), simulate: false);
+    var large = await executor.RunForTestAsync(executable, Child("large"), simulate: false);
     Require(large.Success && large.StandardOutput.Length < 270000 && large.StandardOutput.Contains("truncada"), "large output not capped or process blocked");
 
     var marker = Path.Combine(testDirectory, "should-not-exist.txt");
-    var simulation = await executor.RunAsync(executable, Child($"write \"{marker}\""), simulate: true);
+    var simulation = await executor.RunForTestAsync(executable, Child("write", marker), simulate: true);
     Require(simulation.IsSimulated && !simulation.Success && !File.Exists(marker), "simulation executed or reported success");
-    var realRead = await executor.RunAsync(executable, Child("exit"), simulate: false);
+    var realRead = await executor.RunForTestAsync(executable, Child("exit"), simulate: false);
     Require(!realRead.IsSimulated && realRead.ExitCode == 7, "read-only command incorrectly simulated");
 
     var watch = Stopwatch.StartNew();
     try
     {
-        await timeoutExecutor.RunAsync(executable, Child("wait"), simulate: false);
+        await timeoutExecutor.RunForTestAsync(executable, Child("wait"), simulate: false);
         throw new Exception("timeout did not trigger");
     }
     catch (TimeoutException) { }
@@ -93,25 +98,11 @@ try
     using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(400));
     try
     {
-        await executor.RunAsync(executable, Child("wait"), cancellationToken: cancellation.Token, simulate: false);
+        await executor.RunForTestAsync(executable, Child("wait"), cancellationToken: cancellation.Token, simulate: false);
         throw new Exception("cancellation did not trigger");
     }
     catch (OperationCanceledException) { }
 
-    SoftwarePackagePolicy.Validate(new SoftwareDefinition { Id = "7zip.7zip", Source = "winget", Arguments = "--silent" });
-    SoftwarePackagePolicy.Validate(new SoftwareDefinition { Id = "CCleaner.CCleaner", Source = "chocolatey", Arguments = "-y" });
-    foreach (var package in new[]
-    {
-        new SoftwareDefinition { Id = "x\" --override evil", Source = "winget" },
-        new SoftwareDefinition { Id = "ok", Source = "winget", Arguments = "--override evil" },
-        new SoftwareDefinition { Id = "ok", Source = "unknown" }
-    })
-    {
-        var rejected = false;
-        try { SoftwarePackagePolicy.Validate(package); }
-        catch (InvalidOperationException) { rejected = true; }
-        Require(rejected, "unsafe package accepted");
-    }
     Require(AppxPackagePolicy.IsValidFullName("Microsoft.Example_1.2.3.4_x64__8wekyb3d8bbwe"), "valid Appx name rejected");
     foreach (var invalid in new[] { "", "x' ; Remove-Item", "x/../../bad", new string('a', 256) })
         Require(!AppxPackagePolicy.IsValidFullName(invalid), "unsafe Appx name accepted");
@@ -171,6 +162,35 @@ try
     Require(OperationPolicy.Evaluate(true, false, true, true, true) == OperationDecision.Allowed, "reviewed operation unexpectedly blocked");
     Require(OperationPolicy.Evaluate(true, true, false, false, false) == OperationDecision.Allowed, "simulation should not require elevation");
     Require(OperationPolicy.Evaluate(false, false, false, false, false) == OperationDecision.Allowed, "read action unexpectedly blocked");
+    Require(OperationPolicy.Evaluate(true, false, true, true, true, false) == OperationDecision.OperationJournalRequired,
+        "missing persistent journal allowed");
+
+    var journal = new OperationJournal(Path.Combine(testDirectory, "operations"), logger);
+    Require(journal.IsPersistent, "test journal was not created");
+    using (var operation = journal.Begin("Operación de prueba", OperationRisk.High, simulation: false, elevated: true))
+    {
+        operation.StartStep("preflight", "Comprobación inicial");
+        Require(journal.GetIncompleteRecords().Single().OperationId == operation.Record.OperationId, "running operation was not recoverable");
+        operation.CompleteLatestStep(OperationStatus.Succeeded, "Comprobación terminada.");
+        operation.Complete(OperationOutcome.Partial("Resultado parcial", "Revisar manualmente."));
+    }
+    var recorded = journal.GetRecords().Single();
+    Require(recorded.Status == OperationStatus.Partial && recorded.CompletedAtUtc is not null,
+        "terminal operation result was not persisted");
+    Require(recorded.Steps.Single().Status == OperationStatus.Succeeded, "operation step was not persisted");
+    File.WriteAllText(Path.Combine(journal.DirectoryPath, "corrupt.json"), "not-json");
+    Require(journal.GetRecords().Count == 1, "corrupt journal record should be ignored");
+
+    var temporaryRoot = Path.Combine(testDirectory, "temporary");
+    Directory.CreateDirectory(Path.Combine(temporaryRoot, "nested"));
+    File.WriteAllText(Path.Combine(temporaryRoot, "one.tmp"), "one");
+    File.WriteAllText(Path.Combine(temporaryRoot, "nested", "two.tmp"), "two");
+    var cleaner = new TemporaryFileCleaner();
+    var preview = cleaner.Inspect(temporaryRoot);
+    Require(preview.Files == 2 && preview.Directories == 1, "temporary cleanup preview did not enumerate safely");
+    var cleanup = cleaner.Delete(temporaryRoot);
+    Require(cleanup.DeletedFiles == 2 && Directory.Exists(temporaryRoot) && !Directory.EnumerateFileSystemEntries(temporaryRoot).Any(),
+        "temporary cleanup should delete children but preserve its root");
 
     Require(DiagnosticService.EvaluateSystemDisk(100, 4).Status == DiagnosticStatus.Error, "critical disk not flagged");
     Require(DiagnosticService.EvaluateSystemDisk(100, 5).Status == DiagnosticStatus.Warning, "warning disk not flagged");

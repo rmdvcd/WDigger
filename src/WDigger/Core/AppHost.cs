@@ -17,11 +17,10 @@ public sealed class AppHost : IDisposable
     public AppLogger Logger { get; }
     public CommandExecutor Commands { get; }
     public RestorePointManager RestorePoints { get; }
-    public ConfigManager Config { get; }
     public SensorService Sensors { get; }
     public InventoryService Inventory { get; }
-    public TweakHistoryService TweakHistory { get; }
-    public DiagnosticService Diagnostics { get; } = new();
+    public OperationJournal Operations { get; }
+    public DiagnosticService Diagnostics { get; }
     public DiagnosticReport? LatestDiagnosticReport { get; set; }
 
     /// <summary>When true, modifying commands are logged but never executed.</summary>
@@ -33,48 +32,59 @@ public sealed class AppHost : IDisposable
     private AppHost(string baseDirectory)
     {
         BaseDirectory = Path.GetFullPath(baseDirectory);
-        ConfigDirectory = ResolveDirectory(BaseDirectory, "config");
         var portableLogDirectory = Path.Combine(BaseDirectory, "logs");
         Logger = new AppLogger(portableLogDirectory);
         LogDirectory = Logger.LogDirectory ?? portableLogDirectory;
+        ConfigDirectory = ResolveWritableDataDirectory(BaseDirectory, "config");
         Commands = new CommandExecutor(Logger, () => DryRun);
+        Diagnostics = new DiagnosticService(Commands);
         RestorePoints = new RestorePointManager(Logger);
-        Config = new ConfigManager(ConfigDirectory, Logger);
         Sensors = new SensorService(Logger);
         Inventory = new InventoryService(Logger);
-        TweakHistory = new TweakHistoryService(portableLogDirectory);
+        Operations = new OperationJournal(Path.Combine(LogDirectory, "operations"), Logger);
 
         Logger.Info($"WDigger (WinUI) host created. Process ID: {Environment.ProcessId}; base directory: {BaseDirectory}");
         Logger.Info($"Config directory: {ConfigDirectory}");
         Logger.Info($"Log directory: {LogDirectory}");
+        Logger.Info($"Operation journal: {(Operations.IsPersistent ? Operations.DirectoryPath : "unavailable")}");
         Logger.Info($"Execution identity: {(IsAdministrator ? "Administrator" : "Standard user")}");
         Logger.Info($"Dry-run mode: {DryRun}");
     }
 
     public static AppHost Create(string baseDirectory) => new(baseDirectory);
 
-    private static string ResolveDirectory(string baseDirectory, string relativePath)
+    private static string ResolveWritableDataDirectory(string baseDirectory, string relativePath)
     {
-        var direct = Path.Combine(baseDirectory, relativePath);
-        if (Directory.Exists(direct))
+        var portable = Path.Combine(baseDirectory, relativePath);
+        if (CanWriteDirectory(portable)) return portable;
+
+        var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        if (!string.IsNullOrWhiteSpace(local))
         {
-            return direct;
+            var fallback = Path.Combine(local, "WDigger", relativePath);
+            if (CanWriteDirectory(fallback)) return fallback;
         }
 
-        // Development fallback: find the repository-level config directory.
-        // Published single-file applications use the direct portable path.
-        var directory = new DirectoryInfo(baseDirectory);
-        while (directory.Parent is not null)
-        {
-            directory = directory.Parent;
-            var candidate = Path.Combine(directory.FullName, relativePath);
-            if (Directory.Exists(candidate))
-            {
-                return candidate;
-            }
-        }
+        // Preserve the portable path as the final diagnostic value. Callers use
+        // best-effort settings/configuration, while real changes are separately
+        // blocked if audit log or operation journal persistence is unavailable.
+        return portable;
+    }
 
-        return direct;
+    private static bool CanWriteDirectory(string directory)
+    {
+        try
+        {
+            Directory.CreateDirectory(directory);
+            var probe = Path.Combine(directory, $".wdigger-{Guid.NewGuid():N}.tmp");
+            using (new FileStream(probe, FileMode.CreateNew, FileAccess.Write, FileShare.None)) { }
+            File.Delete(probe);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     public void Dispose() => Logger.Dispose();

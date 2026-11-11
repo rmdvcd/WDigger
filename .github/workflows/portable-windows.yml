@@ -20,6 +20,23 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
+      - name: Verify reviewed execution boundary
+        shell: pwsh
+        run: |
+          $patterns = @(
+            'ProcessStartInfo\.Arguments',
+            'cmd /c',
+            'RunCommandAsync\(\s*"',
+            'RunPowerShellAsync\(\s*\$'
+          )
+          $matches = foreach ($pattern in $patterns) {
+            Get-ChildItem -Path src\WDigger -Recurse -Filter *.cs | Select-String -Pattern $pattern
+          }
+          if ($matches) {
+            $matches | ForEach-Object { Write-Error "$($_.Path):$($_.LineNumber): $($_.Line.Trim())" }
+            throw "Found a legacy command-string execution path."
+          }
+
       - name: Run safety tests
         run: dotnet run --project "tests\WDigger.SafetyTests\WDigger.SafetyTests.csproj" -c Release
 

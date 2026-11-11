@@ -13,6 +13,7 @@ public sealed class AppLogger : IDisposable
     private const int MaxMessageChars = 8192;
     private readonly object _lock = new();
     private readonly Queue<string> _recent = new();
+    private readonly AsyncLocal<string?> _operationId = new();
     private readonly string _session = $"{DateTime.UtcNow:yyyyMMdd_HHmmss}_{Guid.NewGuid():N}";
     private StreamWriter? _writer;
     private string? _directory;
@@ -38,6 +39,14 @@ public sealed class AppLogger : IDisposable
     public void Warn(string message) => Write("WARN", "application", message);
     public void Error(string message) => Write("ERROR", "application", message);
     public void Debug(string message) => Write("DEBUG", "application", message);
+
+    /// <summary>Correlates nested asynchronous log events with one operation.</summary>
+    public IDisposable BeginOperation(Guid operationId)
+    {
+        var previous = _operationId.Value;
+        _operationId.Value = operationId.ToString("N");
+        return new OperationScope(_operationId, previous);
+    }
 
     public void LogCommand(CommandResult result)
     {
@@ -81,9 +90,16 @@ public sealed class AppLogger : IDisposable
 
     private void Write(string severity, string category, string message)
     {
-        var safe = Redact(message);
+        var safe = RedactForStorage(message);
         if (safe.Length > MaxMessageChars) safe = safe[..MaxMessageChars] + " [truncado]";
-        var line = JsonSerializer.Serialize(new { timestampUtc = DateTimeOffset.UtcNow, severity, category, message = safe });
+        var line = JsonSerializer.Serialize(new
+        {
+            timestampUtc = DateTimeOffset.UtcNow,
+            severity,
+            category,
+            operationId = _operationId.Value,
+            message = safe
+        });
         lock (_lock)
         {
             _recent.Enqueue(line);
@@ -107,7 +123,8 @@ public sealed class AppLogger : IDisposable
         }
     }
 
-    private static string Redact(string message)
+    /// <summary>Applies the same minimum redaction to journals and reports.</summary>
+    public static string RedactForStorage(string message)
     {
         var profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         if (!string.IsNullOrWhiteSpace(profile)) message = message.Replace(profile, "[PERFIL]", StringComparison.OrdinalIgnoreCase);
@@ -115,6 +132,18 @@ public sealed class AppLogger : IDisposable
         message = Regex.Replace(message, @"(?i)\b[A-Z]:\\Users\\[^\\\r\n""']+", "[PERFIL]");
         message = Regex.Replace(message, @"\b(?:\d{1,3}\.){3}\d{1,3}\b", "[IP]");
         return message;
+    }
+
+    private sealed class OperationScope(AsyncLocal<string?> current, string? previous) : IDisposable
+    {
+        private AsyncLocal<string?>? _current = current;
+        private readonly string? _previous = previous;
+
+        public void Dispose()
+        {
+            var current = Interlocked.Exchange(ref _current, null);
+            if (current is not null) current.Value = _previous;
+        }
     }
 
     public void Dispose()

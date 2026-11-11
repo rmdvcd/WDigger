@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Diagnostics;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using WDigger.Diagnostics;
 using WDigger.Models;
 using WDigger.UI;
 
@@ -16,6 +17,7 @@ public sealed partial class DashboardPage : UserControl
 {
     private readonly ShellWindow _shell;
     private readonly ObservableCollection<SensorSummaryItem> _sensors = new();
+    private readonly ObservableCollection<DiagnosticSummaryItem> _diagnostics = new();
 
     public DashboardPage(ShellWindow shell)
     {
@@ -24,10 +26,15 @@ public sealed partial class DashboardPage : UserControl
 
         DataFolderText.Text = _shell.Host.BaseDirectory;
         LogFolderText.Text = _shell.Host.Logger.LogFilePath;
+        JournalFolderText.Text = _shell.Host.Operations.IsPersistent
+            ? _shell.Host.Operations.DirectoryPath
+            : "No disponible; las operaciones reales están bloqueadas.";
         ConfigFolderText.Text = _shell.Host.ConfigDirectory;
 
         DryRunBanner.IsOpen = _shell.Host.DryRun;
         SensorSummary.ItemsSource = _sensors;
+        DiagnosticSummary.ItemsSource = _diagnostics;
+        LoadDiagnosticSummary();
 
         _ = LoadAsync();
     }
@@ -123,6 +130,36 @@ public sealed partial class DashboardPage : UserControl
             ? value
             : "n/a";
 
+    private void LoadDiagnosticSummary()
+    {
+        _diagnostics.Clear();
+        var report = _shell.Host.LatestDiagnosticReport;
+        if (report is null)
+        {
+            DiagnosticSummaryText.Text = "Aún no hay un análisis reciente. Ejecuta el diagnóstico antes de decidir reparar.";
+            return;
+        }
+
+        var findings = report.Results
+            .Where(result => result.Status is DiagnosticStatus.Error or DiagnosticStatus.Warning or DiagnosticStatus.Failed or DiagnosticStatus.AccessDenied)
+            .Take(6)
+            .ToList();
+        DiagnosticSummaryText.Text = findings.Count == 0
+            ? $"Análisis completado {report.CompletedAtUtc.ToLocalTime():g}. No hay hallazgos de error o advertencia; revisa las comprobaciones no disponibles."
+            : $"Análisis completado {report.CompletedAtUtc.ToLocalTime():g}. Se muestran {findings.Count} hallazgo(s) priorizado(s).";
+        foreach (var result in findings)
+        {
+            _diagnostics.Add(new DiagnosticSummaryItem
+            {
+                Header = $"[{DiagnosticReport.StatusText(result.Status)}] {result.Category} · {result.Title}",
+                Summary = result.Summary,
+                Recommendation = result.Recommendation
+            });
+        }
+    }
+
+    private void OpenDiagnosticsButton_Click(object sender, RoutedEventArgs e) => _shell.NavigateToTag("diagnostics");
+
     private void QuickRepair_Click(object sender, RoutedEventArgs e) => _shell.NavigateToTag("repair");
     private void QuickSensors_Click(object sender, RoutedEventArgs e) => _shell.NavigateToTag("hardware");
     private void QuickSoftware_Click(object sender, RoutedEventArgs e) => _shell.NavigateToTag("software");
@@ -151,4 +188,11 @@ public sealed class SensorSummaryItem
     public string Label { get; set; } = "";
     public string Value { get; set; } = "";
     public string Unit { get; set; } = "";
+}
+
+public sealed class DiagnosticSummaryItem
+{
+    public string Header { get; set; } = "";
+    public string Summary { get; set; } = "";
+    public string Recommendation { get; set; } = "";
 }
