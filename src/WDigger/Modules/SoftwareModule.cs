@@ -7,32 +7,10 @@ namespace WDigger.Modules;
 public sealed class SoftwareModule : IModule
 {
     public string Name => "Software";
-    public string Description => "Inventario y retirada limitada de aplicaciones Appx. Las integraciones de paquetes siguen suspendidas.";
+    public string Description => "Retirada limitada de aplicaciones Appx del usuario actual.";
 
     public IReadOnlyList<ModuleAction> CreateActions(AppHost host) => new[]
     {
-        new ModuleAction(
-            "Instalar paquetes configurados",
-            "La instalación de paquetes externos está suspendida.",
-            (_, _) => Task.CompletedTask, changesSystem: true,
-            unavailableReason: "Winget y Chocolatey siguen suspendidos hasta verificar origen, ruta, firma, versión e identidad de cada paquete.",
-            risk: OperationRisk.High),
-        new ModuleAction(
-            "Instalar un paquete configurado",
-            "La instalación de paquetes externos está suspendida.",
-            (_, _) => Task.CompletedTask, changesSystem: true,
-            unavailableReason: "Winget y Chocolatey siguen suspendidos hasta verificar origen, ruta, firma, versión e identidad de cada paquete.",
-            risk: OperationRisk.High),
-        new ModuleAction(
-            "Buscar un paquete",
-            "Buscaría en los orígenes configurados de Winget.",
-            (_, _) => Task.CompletedTask,
-            unavailableReason: "La ejecución de Winget desde una aplicación elevada sigue suspendida hasta verificar ruta, firma e identidad del paquete en cada equipo."),
-        new ModuleAction(
-            "Listar paquetes instalados",
-            "Mostraría el inventario conocido por Winget.",
-            (_, _) => Task.CompletedTask,
-            unavailableReason: "La ejecución de Winget desde una aplicación elevada sigue suspendida hasta verificar ruta, firma e identidad del paquete en cada equipo."),
         new ModuleAction(
             "Quitar un paquete Appx",
             "Selecciona un único paquete removible del usuario actual; no elimina paquetes provisionados ni afecta a otros usuarios.",

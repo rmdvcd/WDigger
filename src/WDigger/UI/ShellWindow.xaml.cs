@@ -41,6 +41,9 @@ public sealed partial class ShellWindow : Window
 
     internal AppHost Host => _host;
 
+    /// <summary>True once a shell window exists in this process.</summary>
+    internal static bool InstanceCreated { get; private set; }
+
     public ShellWindow()
     {
         InitializeComponent();
@@ -94,6 +97,7 @@ public sealed partial class ShellWindow : Window
 
         ShowWelcome();
         ShowInterruptedOperations();
+        InstanceCreated = true;
     }
 
     private void ShowInterruptedOperations()

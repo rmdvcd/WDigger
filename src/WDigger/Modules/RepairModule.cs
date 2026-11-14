@@ -41,14 +41,7 @@ public sealed class RepairModule : IModule
             changesSystem: true,
             confirmation: "Se detendrán temporalmente servicios de Windows Update y se renombrarán las cachés. Conserva una copia de seguridad y no apagues el equipo.",
             canCancel: false, allowedInElevatedSession: true, risk: OperationRisk.High,
-            commandTimeout: TimeSpan.FromMinutes(20), recovery: OperationRecovery.CompensatesInProcess),
-        new ModuleAction(
-            "Restablecer caché de Winget",
-            "Fuerza el restablecimiento de los orígenes de paquetes de Winget.",
-            (_, _) => Task.CompletedTask,
-            changesSystem: true,
-            unavailableReason: "La integración de Winget sigue suspendida hasta verificar ruta, firma, versión e identidad del paquete en cada equipo.",
-            risk: OperationRisk.High)
+            commandTimeout: TimeSpan.FromMinutes(20), recovery: OperationRecovery.CompensatesInProcess)
     };
 
     private static async Task ResetWindowsUpdateAsync(ModuleExecutionContext context, CancellationToken token)

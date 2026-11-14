@@ -146,11 +146,11 @@
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
                 <StackPanel Spacing="10">
                     <StackPanel Orientation="Horizontal" Spacing="4">
-                        <TextBlock Text="SENSORES EN TIEMPO REAL" FontSize="10" FontWeight="SemiBold" CharacterSpacing="100"
+                        <TextBlock Text="SENSORES (LECTURA PUNTUAL)" FontSize="10" FontWeight="SemiBold" CharacterSpacing="100"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
-                        <Button x:Name="OpenSensorsButton" Content="Ver monitoreo completo"
+                        <Button x:Name="OpenSensorsButton" Content="Ver inventario de hardware"
                                 Click="OpenSensorsButton_Click"
-                                ToolTipService.ToolTip="Abrir el monitor de sensores de hardware" />
+                                ToolTipService.ToolTip="Abrir el inventario de hardware" />
                     </StackPanel>
                     <ItemsControl x:Name="SensorSummary" HorizontalAlignment="Left">
                         <ItemsControl.ItemsPanel>
@@ -204,8 +204,8 @@
                     <StackPanel Orientation="Horizontal" Spacing="10">
                         <FontIcon Glyph="&#xE9D9;" FontSize="16" Foreground="{ThemeResource AppAccentBrush}" VerticalAlignment="Center" />
                         <StackPanel VerticalAlignment="Center">
-                            <TextBlock Text="Sensores en vivo" FontWeight="SemiBold" FontSize="12" />
-                            <TextBlock Text="Temperatura y carga" FontSize="10" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <TextBlock Text="Inventario de hardware" FontWeight="SemiBold" FontSize="12" />
+                            <TextBlock Text="CPU, RAM y discos" FontSize="10" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         </StackPanel>
                     </StackPanel>
                 </Button>

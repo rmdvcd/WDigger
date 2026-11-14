@@ -7,18 +7,14 @@ namespace WDigger.Modules;
 public sealed class BackupModule : IModule
 {
     public string Name => "Copias de seguridad";
-    public string Description => "Localización, detalles y restauración de copias Acronis True Image (.tibx).";
+    public string Description => "Localización y detalles de copias Acronis True Image (.tibx).";
 
     public IReadOnlyList<ModuleAction> CreateActions(AppHost host) => new[]
     {
         new ModuleAction("Buscar copias .tibx", "Busca copias de seguridad de forma recursiva en una carpeta.",
             (context, token) => ListTibxAsync(host, context, token)),
         new ModuleAction("Ver detalles de una copia", "Muestra tamaño y fecha de modificación de un archivo .tibx.",
-            (context, token) => ShowDetailsAsync(host, context, token)),
-        new ModuleAction("Restaurar una copia .tibx", "Usa deploycmd de Acronis para restaurar en una unidad de destino.",
-            (context, token) => Task.CompletedTask, changesSystem: true,
-            unavailableReason: "Suspendida hasta validar Acronis y confirmar el disco de destino de forma segura.",
-            risk: OperationRisk.Destructive)
+            (context, token) => ShowDetailsAsync(host, context, token))
     };
 
     private static async Task ListTibxAsync(AppHost host, ModuleExecutionContext context, CancellationToken token)

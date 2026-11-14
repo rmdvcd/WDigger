@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Windows.Storage.Pickers;
+using System.Runtime.InteropServices;
 
 namespace WDigger.UI;
 
@@ -159,31 +160,37 @@ public sealed class DialogService
         _ = initialPath; // Folder start locations are not supported by the WinRT picker.
         _ = title;
 
-        var picker = new FileOpenPicker
-        {
-            SuggestedStartLocation = PickerLocationId.ComputerFolder
-        };
         var extensions = ParseExtensions(filter);
-        foreach (var extension in extensions)
+        return await RunOnUiThreadAsync(async () =>
         {
-            if (!picker.FileTypeFilter.Contains(extension))
+            var picker = new FileOpenPicker
             {
-                picker.FileTypeFilter.Add(extension);
+                SuggestedStartLocation = PickerLocationId.ComputerFolder
+            };
+            foreach (var extension in extensions)
+            {
+                if (!picker.FileTypeFilter.Contains(extension))
+                {
+                    picker.FileTypeFilter.Add(extension);
+                }
             }
-        }
 
-        WinRT.Interop.InitializeWithWindow.Initialize(picker, WindowHandle);
-        var file = await picker.PickSingleFileAsync();
-        return file?.Path;
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, WindowHandle);
+            var file = await picker.PickSingleFileAsync();
+            return file?.Path;
+        });
     }
 
     public async Task<string?> PickSaveFileAsync(string suggestedName, string extension)
     {
-        var picker = new FileSavePicker { SuggestedFileName = suggestedName, SuggestedStartLocation = PickerLocationId.DocumentsLibrary };
-        picker.FileTypeChoices.Add("Documento de texto", new List<string> { extension });
-        WinRT.Interop.InitializeWithWindow.Initialize(picker, WindowHandle);
-        var file = await picker.PickSaveFileAsync();
-        return file?.Path;
+        return await RunOnUiThreadAsync(async () =>
+        {
+            var picker = new FileSavePicker { SuggestedFileName = suggestedName, SuggestedStartLocation = PickerLocationId.DocumentsLibrary };
+            picker.FileTypeChoices.Add("Documento de texto", new List<string> { extension });
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, WindowHandle);
+            var file = await picker.PickSaveFileAsync();
+            return file?.Path;
+        });
     }
 
     public async Task<string?> PickFolderAsync(string description, string? initialPath = null)
@@ -191,15 +198,65 @@ public sealed class DialogService
         _ = description;
         _ = initialPath; // Folder start locations are not supported by the WinRT picker.
 
-        var picker = new FolderPicker
+        return await RunOnUiThreadAsync(async () =>
         {
-            SuggestedStartLocation = PickerLocationId.ComputerFolder
-        };
-        picker.FileTypeFilter.Add("*");
+            var picker = new FolderPicker
+            {
+                SuggestedStartLocation = PickerLocationId.ComputerFolder
+            };
+            picker.FileTypeFilter.Add("*");
 
-        WinRT.Interop.InitializeWithWindow.Initialize(picker, WindowHandle);
-        var folder = await picker.PickSingleFolderAsync();
-        return folder?.Path;
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, WindowHandle);
+            var folder = await picker.PickSingleFolderAsync();
+            return folder?.Path;
+        });
+    }
+
+    /// <summary>
+    /// Runs a Windows shell picker on the UI thread. Pickers fail with
+    /// COMException (0x80004005) when they are invoked from a worker thread
+    /// without a dispatcher, which is what happens after an awaited command
+    /// resumes the action outside the UI thread.
+    /// </summary>
+    private async Task<string?> RunOnUiThreadAsync(Func<Task<string?>> operation)
+    {
+        var dispatcher = _window.DispatcherQueue;
+        if (dispatcher.HasThreadAccess)
+        {
+            return await InvokePickerAsync(operation);
+        }
+
+        var completion = new TaskCompletionSource<string?>();
+        if (!dispatcher.TryEnqueue(async () =>
+            {
+                try
+                {
+                    completion.SetResult(await InvokePickerAsync(operation));
+                }
+                catch (Exception exception)
+                {
+                    completion.SetException(exception);
+                }
+            }))
+        {
+            completion.SetException(new InvalidOperationException("No se pudo mostrar el selector en el hilo de la interfaz."));
+        }
+
+        return await completion.Task;
+    }
+
+    private static async Task<string?> InvokePickerAsync(Func<Task<string?>> operation)
+    {
+        try
+        {
+            return await operation();
+        }
+        catch (COMException exception)
+        {
+            throw new InvalidOperationException(
+                "Windows no pudo mostrar el selector de archivos o carpetas. Cierra cualquier diálogo abierto y vuelve a intentarlo.",
+                exception);
+        }
     }
 
     private static IReadOnlyList<string> ParseExtensions(string filter)

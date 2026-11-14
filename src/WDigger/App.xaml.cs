@@ -222,6 +222,14 @@ public partial class App : Application
         if (!IsHeadless)
         {
             base.OnLaunched(args);
+            // The shell window is the only window of the application: create and
+            // activate it explicitly so startup never depends on framework
+            // heuristics (an app that starts without a window looks hung).
+            if (!WDigger.UI.ShellWindow.InstanceCreated)
+            {
+                var window = new WDigger.UI.ShellWindow();
+                window.Activate();
+            }
         }
         // Headless mode: already handled in constructor; just exit
         else
