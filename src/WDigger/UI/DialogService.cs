@@ -2,8 +2,9 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
-using Windows.Storage.Pickers;
+using System.IO;
 using System.Runtime.InteropServices;
+using Windows.Storage.Pickers;
 
 namespace WDigger.UI;
 
@@ -198,7 +199,7 @@ public sealed class DialogService
         _ = description;
         _ = initialPath; // Folder start locations are not supported by the WinRT picker.
 
-        return await RunOnUiThreadAsync(async () =>
+        var result = await RunOnUiThreadAsync(async () =>
         {
             var picker = new FolderPicker
             {
@@ -210,6 +211,24 @@ public sealed class DialogService
             var folder = await picker.PickSingleFolderAsync();
             return folder?.Path;
         });
+        if (result is not null)
+        {
+            return result;
+        }
+
+        // Elevated processes without package identity cannot open WinRT
+        // pickers (COMException 0x80004005): fall back to a typed path.
+        var typed = await PromptAsync(
+            "Selector no disponible",
+            "Windows no pudo abrir el explorador de carpetas (ocurre al ejecutar la aplicación como administrador). Escribe la ruta de la carpeta:",
+            initialPath ?? "");
+        if (string.IsNullOrWhiteSpace(typed))
+        {
+            return null;
+        }
+
+        var candidate = typed.Trim('"');
+        return Directory.Exists(candidate) ? candidate : null;
     }
 
     /// <summary>
@@ -251,11 +270,11 @@ public sealed class DialogService
         {
             return await operation();
         }
-        catch (COMException exception)
+        catch (COMException)
         {
-            throw new InvalidOperationException(
-                "Windows no pudo mostrar el selector de archivos o carpetas. Cierra cualquier diálogo abierto y vuelve a intentarlo.",
-                exception);
+            // Elevated processes without package identity cannot open WinRT
+            // pickers; callers fall back to a typed path when this returns null.
+            return null;
         }
     }
 
