@@ -166,6 +166,12 @@ public sealed partial class ShellWindow : Window
             return;
         }
 
+        if (tag == "search")
+        {
+            PageHost.Content = new SearchPage(this, _moduleIndex.Values);
+            return;
+        }
+
         if (tag is not null && _moduleIndex.TryGetValue(tag, out var entry))
         {
             PageHost.Content = new ModulePage(this, entry);
@@ -187,6 +193,12 @@ public sealed partial class ShellWindow : Window
         {
             NavView.SelectedItem = item;
         }
+    }
+
+    internal void NavigateToAction(string tag, string title)
+    {
+        NavigateToTag(tag);
+        if (PageHost.Content is ModulePage page) page.SetSearch(title);
     }
 
     private void RestoreContentSelection()

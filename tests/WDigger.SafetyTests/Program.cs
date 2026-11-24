@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Reflection;
 using WDigger.Core;
 using WDigger.Diagnostics;
+using WDigger.Services;
 using Microsoft.Win32;
 using System.Xml.Linq;
 
@@ -105,6 +106,16 @@ try
     }
     catch (OperationCanceledException) { }
 
+    var inventoryReport = SoftwareInventoryReport.Create(new SoftwareInventoryResult(
+        new[] { new InstalledSoftware("App\nNombre falso", "1", "Editor\r\nInyectado", "Equipo") }, new[] { "Aviso\nextra" }));
+    Require(inventoryReport.Contains("Nombre: App Nombre falso") && inventoryReport.Contains("Editor: Editor  Inyectado") &&
+        inventoryReport.Contains("Advertencia: Aviso extra"), "inventory report did not neutralize control characters");
+    Require(inventoryReport.Contains("potencialmente sensibles"), "inventory report omitted privacy warning");
+
+    Require(ActionSearch.Matches("reparacion DISCO", "Reparación", "Comprobar disco"), "search should ignore accents and case across fields");
+    Require(!ActionSearch.Matches("disco red", "Comprobar disco"), "search must match all words");
+    Require(ActionSearch.Matches("  ", "Cualquier acción"), "empty search must show actions");
+
     Require(AppxPackagePolicy.IsValidFullName("Microsoft.Example_1.2.3.4_x64__8wekyb3d8bbwe"), "valid Appx name rejected");
     foreach (var invalid in new[] { "", "x' ; Remove-Item", "x/../../bad", new string('a', 256) })
         Require(!AppxPackagePolicy.IsValidFullName(invalid), "unsafe Appx name accepted");
@@ -123,7 +134,9 @@ try
             var service = new RegistryTweakService(RegistryHive.CurrentUser, sandbox + @"\undo", sandbox + @"\target\");
             var targetPath = sandbox + @"\target\" + tweak.Key;
             using (var key = root.CreateSubKey(targetPath, writable: true)) key.SetValue(tweak.Value, 2, RegistryValueKind.DWord);
+            Require(service.Inspect(tweak.Id).Value == "DWORD 2" && service.Inspect(tweak.Id).Snapshot == "No", "inspection did not report initial state");
             service.Apply(tweak.Id);
+            Require(service.Inspect(tweak.Id).Value == "DWORD 0" && service.Inspect(tweak.Id).Snapshot.StartsWith("Sí"), "inspection missed applied value or snapshot");
             Require(service.HasSnapshot(tweak.Id), "snapshot was not persisted");
             try { service.Apply(tweak.Id); throw new Exception("duplicate application accepted"); }
             catch (InvalidOperationException) { }
@@ -151,11 +164,36 @@ try
             catch (InvalidOperationException) { }
             Require(!service.HasSnapshot(tweak.Id), "snapshot created for unsupported value");
             using (var snapshot = root.CreateSubKey(sandbox + @"\undo\" + tweak.Id, writable: true)) snapshot.SetValue("Ready", 0, RegistryValueKind.DWord);
+            Require(service.Inspect(tweak.Id).Snapshot.StartsWith("Incompleta"), "inspection missed incomplete snapshot");
             try { service.Revert(tweak.Id); throw new Exception("incomplete snapshot accepted"); }
             catch (InvalidOperationException) { }
             Require(service.HasSnapshot(tweak.Id), "incomplete snapshot should be retained");
         }
         finally { root.DeleteSubKeyTree(sandbox, throwOnMissingSubKey: false); }
+
+        var softwareSandbox = @"SOFTWARE\WDigger-software-test-" + Guid.NewGuid().ToString("N");
+        try
+        {
+            using (var key = root.CreateSubKey(softwareSandbox + @"\entry"))
+            {
+                key.SetValue("DisplayName", " Test program ");
+                key.SetValue("DisplayVersion", "1.2");
+                key.SetValue("UninstallString", "must never execute");
+            }
+            using (var ignored = root.CreateSubKey(softwareSandbox + @"\unnamed")) ignored.SetValue("Publisher", "Unknown");
+            var items = new List<InstalledSoftware>();
+            var warnings = new List<string>();
+            InstalledSoftwareInventory.ReadView(RegistryHive.CurrentUser, RegistryView.Registry64, softwareSandbox, "test", items, warnings, CancellationToken.None);
+            Require(items.Count == 1 && items[0].Name == "Test program" && items[0].Version == "1.2" && items[0].Publisher == "—", "software inventory did not read expected metadata");
+            Require(warnings.Count == 0, "unexpected software inventory warning");
+            using var cancelled = new CancellationTokenSource();
+            cancelled.Cancel();
+            try { InstalledSoftwareInventory.ReadView(RegistryHive.CurrentUser, RegistryView.Registry64, softwareSandbox, "test", items, warnings, cancelled.Token); throw new Exception("inventory ignored cancellation"); }
+            catch (OperationCanceledException) { }
+            InstalledSoftwareInventory.ReadView(RegistryHive.CurrentUser, RegistryView.Registry64, softwareSandbox + @"\missing", "test", items, warnings, CancellationToken.None);
+            Require(warnings.Count == 1, "missing software inventory key did not produce warning");
+        }
+        finally { root.DeleteSubKeyTree(softwareSandbox, throwOnMissingSubKey: false); }
     }
 
     Require(OperationPolicy.Evaluate(true, false, true, false, true) == OperationDecision.AdministratorRequired, "missing administrator gate");

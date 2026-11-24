@@ -41,6 +41,28 @@ public sealed class RegistryTweakService
         return undo is not null;
     }
 
+    public sealed record Inspection(string Name, string Value, string Snapshot);
+
+    /// <summary>Reports stored registry values, not whether Windows applies a policy.</summary>
+    public Inspection Inspect(string id)
+    {
+        var item = Resolve(id);
+        using var root = RegistryKey.OpenBaseKey(_hive, RegistryView.Registry64);
+        using var target = root.OpenSubKey(TargetKey(item));
+        var value = "No configurado";
+        if (target is not null && target.GetValueNames().Contains(item.Value, StringComparer.OrdinalIgnoreCase))
+        {
+            value = target.GetValueKind(item.Value) == RegistryValueKind.DWord && target.GetValue(item.Value) is int number
+                ? $"DWORD {number}" : "Tipo distinto de DWORD; requiere revisión";
+        }
+        using var snapshot = root.OpenSubKey($"{_undoRoot}\\{item.Id}");
+        var snapshotState = snapshot is null ? "No" :
+            snapshot.GetValue("Ready") is int ready && ready == 1 &&
+            snapshot.GetValue("HadValue") is int had && had is 0 or 1 && snapshot.GetValue("Previous") is int
+                ? "Sí; reversión sujeta a verificación" : "Incompleta; revisión manual";
+        return new Inspection(item.Name, value, snapshotState);
+    }
+
     public void Apply(string id)
     {
         var item = Resolve(id);

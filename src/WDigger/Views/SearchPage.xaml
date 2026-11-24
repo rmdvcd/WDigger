@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="WDigger.Views.SearchPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid Padding="28,22,28,14" RowSpacing="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <StackPanel Spacing="4">
+            <TextBlock Text="Buscar herramientas" FontSize="28" FontWeight="SemiBold" />
+            <TextBlock Text="Busca por categoría, nombre o descripción. Abre la categoría para revisar y ejecutar la acción."
+                       TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+        </StackPanel>
+        <TextBox x:Name="Query" Grid.Row="1" PlaceholderText="Ej. red, privacidad, reparar disco"
+                 AutomationProperties.Name="Buscar herramientas" TextChanged="Query_TextChanged" />
+        <TextBlock x:Name="CountLabel" Grid.Row="2" AutomationProperties.LiveSetting="Polite" />
+        <ListView x:Name="Results" Grid.Row="3" SelectionMode="None" IsItemClickEnabled="True" ItemClick="Results_ItemClick">
+            <ListView.ItemTemplate>
+                <DataTemplate>
+                    <StackPanel Padding="8" Spacing="3">
+                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding Category}" Foreground="{ThemeResource AppAccentBrush}" />
+                        <TextBlock Text="{Binding Description}" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+                </DataTemplate>
+            </ListView.ItemTemplate>
+        </ListView>
+    </Grid>
+</UserControl>

@@ -74,21 +74,12 @@ public sealed partial class ActionCard : UserControl
 
     private async Task ExecuteAsync()
     {
-        if (ViewModel is not ActionCardViewModel viewModel || viewModel.IsRunning)
+        if (ViewModel is not ActionCardViewModel viewModel || viewModel.IsRunning || !viewModel.IsAvailable)
         {
             return;
         }
 
-        _viewModel = viewModel;
-        try
-        {
-            UpdateRunButtonState();
-            await viewModel.ExecuteAsync();
-        }
-        finally
-        {
-            _viewModel = null;
-        }
+        await viewModel.ExecuteAsync();
     }
 
     private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
