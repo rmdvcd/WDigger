@@ -8,6 +8,7 @@
     <Grid Padding="28,22,28,14">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
@@ -41,8 +42,12 @@
             </Border>
         </Grid>
 
+        <TextBox x:Name="ActionSearch" Grid.Row="1" Margin="0,18,0,0" MaxWidth="420" HorizontalAlignment="Left"
+                 PlaceholderText="Buscar acciones en esta categoría" AutomationProperties.Name="Buscar acciones en esta categoría"
+                 TextChanged="ActionSearch_TextChanged" />
+
         <!-- Action cards -->
-        <ScrollViewer Grid.Row="1" Margin="0,18,0,0" VerticalScrollBarVisibility="Auto"
+        <ScrollViewer Grid.Row="2" Margin="0,12,0,0" VerticalScrollBarVisibility="Auto"
                       HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled">
             <ItemsControl x:Name="ActionCards" HorizontalAlignment="Left">
                 <ItemsControl.ItemsPanel>

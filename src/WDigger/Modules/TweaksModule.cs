@@ -10,6 +10,9 @@ public sealed class TweaksModule : IModule
 
     public IReadOnlyList<ModuleAction> CreateActions(AppHost host) => new[]
     {
+        new ModuleAction("Consultar ajustes y copias",
+            "Muestra el valor almacenado y si hay copia de recuperación. No determina si Windows aplica cada directiva.",
+            ShowSettingsAsync),
         new ModuleAction("Aplicar un ajuste de registro", "Solo ajustes predefinidos; guarda el valor previo en HKLM antes de modificarlo.",
             (context, token) => ChangeAsync(context, token, revert: false), changesSystem: true,
             confirmation: "Las directivas pueden estar administradas por tu organización. La copia previa se guarda en el registro de este equipo.",
@@ -21,6 +24,31 @@ public sealed class TweaksModule : IModule
             canCancel: false, allowedInElevatedSession: true, risk: OperationRisk.Moderate,
             recovery: OperationRecovery.SnapshotAndVerifiedRevert)
     };
+
+    private static Task ShowSettingsAsync(ModuleExecutionContext context, CancellationToken token)
+    {
+        var service = new RegistryTweakService();
+        var rows = new List<string[]>();
+        var failures = 0;
+        foreach (var item in RegistryTweakService.Catalog)
+        {
+            token.ThrowIfCancellationRequested();
+            try
+            {
+                var result = service.Inspect(item.Id);
+                rows.Add(new[] { result.Name, result.Value, result.Snapshot });
+            }
+            catch (Exception exception) when (exception is UnauthorizedAccessException or System.Security.SecurityException or System.IO.IOException)
+            {
+                failures++;
+                rows.Add(new[] { item.Name, "No disponible", "No disponible" });
+            }
+        }
+        context.ShowTable("Valores de ajustes predefinidos", new[] { "Ajuste", "Valor en registro", "Copia previa" }, rows);
+        context.WriteLine("Los valores mostrados no prueban que la directiva sea compatible o esté activa en esta edición de Windows.", OutputKind.Warning);
+        if (failures > 0) context.SetOutcome(OperationOutcome.Partial("No se pudieron leer todos los ajustes."));
+        return Task.CompletedTask;
+    }
 
     private static async Task ChangeAsync(ModuleExecutionContext context, CancellationToken token, bool revert)
     {
