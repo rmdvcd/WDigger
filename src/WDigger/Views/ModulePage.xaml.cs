@@ -54,7 +54,7 @@ public sealed partial class ModulePage : UserControl
     {
         if (ActionCards is null || ActionSearch is null) return;
         var query = ActionSearch.Text.Trim();
-        var matches = _actions.Where(item => ActionSearch.Matches(query, item.Title, item.Description)).ToList();
+        var matches = _actions.Where(item => WDigger.Core.ActionSearch.Matches(query, item.Title, item.Description)).ToList();
         ActionCards.ItemsSource = matches;
         ModuleBadge.Text = $"{matches.Count} de {_actions.Count} acciones";
     }
