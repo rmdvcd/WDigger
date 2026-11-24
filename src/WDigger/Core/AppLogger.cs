@@ -113,7 +113,7 @@ public sealed class AppLogger : IDisposable
                     _writer = null;
                     OpenPart();
                 }
-                _writer.WriteLine(line);
+                _writer!.WriteLine(line);
             }
             catch
             {

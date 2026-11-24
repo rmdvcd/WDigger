@@ -1,5 +1,7 @@
 using Microsoft.Win32;
 
+#pragma warning disable CA1416 // Se accede a tipos o miembros específicos de Windows en todo el sistema
+
 namespace WDigger.Core;
 
 /// <summary>Fixed registry tweaks. Editable configuration never controls privileged registry paths.</summary>
